@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using these metadata."
+title: "Bhoonidhi Explorer: plain-language discovery of ISRO Bhoonidhi satellite scenes"
+abstract: >-
+  Bhoonidhi Explorer finds satellite scenes in ISRO's Bhoonidhi archive from a
+  question in plain words or a query form, shows them on a map, and hands off
+  the commands that download them under the user's own Bhoonidhi login. It
+  searches a STAC catalogue of the archive's scene metadata, built by
+  bhoonidhi-stac.
+type: software
+authors:
+  - given-names: Aditya
+    family-names: Sharma
+    alias: geovicco-dev
+    orcid: "https://orcid.org/0009-0007-6154-086X"
+repository-code: "https://github.com/geovicco-dev/bhoonidhi-explorer"
+license: MIT
+keywords:
+  - remote sensing
+  - earth observation
+  - satellite imagery
+  - STAC
+  - ISRO
+  - Bhoonidhi
+  - NRSC
+  - GIS
+version: 0.1.0
+date-released: "2026-09-26"
