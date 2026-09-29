@@ -1,0 +1,35 @@
+# Dependencies
+node_modules
+.venv/
+
+# Build output
+.next/
+out/
+build
+dist
+.turbo
+*.tsbuildinfo
+next-env.d.ts
+coverage
+
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Logs
+npm-debug.log*
+.pnpm-debug.log*
+
+# Local settings and secrets
+.env*
+!.env.example
+
+# Local data: saved conversations, scenario results
+/apps/api/data/
+/apps/api/scenarios/results/
+
+# OS
+.DS_Store
+*.pem
