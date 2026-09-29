@@ -1,0 +1,65 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @workspace/ui exec tsc --noEmit
+      - run: pnpm --filter @workspace/ui exec eslint .
+      - run: pnpm --filter web exec tsc --noEmit
+      - run: pnpm --filter web exec eslint .
+      - run: cp apps/web/.env.example apps/web/.env.local && pnpm --filter web build
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --all-packages
+      - run: uv run ruff check apps/api/src apps/api/tests apps/api/scenarios
+      - run: uv run pytest
+
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compose file
+        run: |
+          cp .env.example .env
+          sed -i 's|^OPENAI_MODEL=$|OPENAI_MODEL=check|' .env
+          docker compose -f deploy/compose.yaml --env-file .env config --quiet
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.28.0 \
+            git /repo --no-banner --redact --config /repo/.gitleaks.toml
+      - name: No private network addresses
+        run: |
+          if git grep -n -I -E '(^|[^0-9.])(10\.[0-9]+\.[0-9]+\.[0-9]+|192\.168\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]+\.[0-9]+)([^0-9]|$)' -- ':!*.lock' ':!pnpm-lock.yaml'; then
+            echo "A private network address is committed; use a placeholder." && exit 1
+          fi
