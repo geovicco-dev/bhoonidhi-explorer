@@ -1,42 +1,26 @@
 name: Images
 
+# A release tag (v1.2.3) builds the image and publishes it to GHCR for
+# self-hosters, with deploy/build-image.sh, the script every release build
+# uses.
+
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
 
 permissions:
   contents: read
   packages: write
 
 jobs:
-  images:
+  image:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - name: bhoonidhi-explorer
-            dockerfile: deploy/explorer.Dockerfile
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+      - name: Build and push
+        run: bash deploy/build-image.sh "ghcr.io/${{ github.repository_owner }}/bhoonidhi-explorer" "${GITHUB_REF_NAME#v}"

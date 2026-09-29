@@ -52,6 +52,11 @@ EXPLORER_TAG=0.1.0
 
 and start with `docker compose -f deploy/compose.yaml --env-file .env up -d --no-build`.
 
+Every published image is built by `deploy/build-image.sh` from the
+release's commit, with base images pinned by digest; the image's
+`org.opencontainers.image.revision` label names that commit
+(`docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' <image>`).
+
 ## The model
 
 The explorer's agent calls tools (place lookup, catalogue search, `bhd`
