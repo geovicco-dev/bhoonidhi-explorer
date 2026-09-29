@@ -1,0 +1,161 @@
+/* The explorer's design tokens: every colour, radius, font and motion value
+   the interface uses, for both themes. The dark theme is the default; light
+   applies with data-theme="light" on <html> (next-themes sets it).
+
+   Colour ramps first, then the semantic names the components read. The accent
+   is one sky blue in both themes: sky-400 on the dark canvas, sky-500 on
+   light, a step deeper so it keeps 3.9:1 on white. Success stays green so
+   "Ready" keeps its own colour next to the blue "Archived". */
+
+:root {
+  --bx-slate-50: #f6f7f9;
+  --bx-slate-100: #eceef2;
+  --bx-slate-200: #d5d9e2;
+  --bx-slate-300: #b0b8c7;
+  --bx-slate-400: #8590a4;
+  --bx-slate-500: #657186;
+  --bx-slate-600: #505a6d;
+  --bx-slate-700: #414959;
+  --bx-slate-800: #2a303c;
+  --bx-slate-850: #20242e;
+  --bx-slate-900: #161a22;
+  --bx-slate-950: #0d0f15;
+  --bx-green-300: #57d9a0;
+  --bx-green-400: #22bd80;
+  --bx-green-600: #0b8159;
+  --bx-red-300: #f4a5a5;
+  --bx-red-400: #ec6f6f;
+  --bx-red-500: #dc4343;
+  --bx-red-600: #c02a2a;
+  --bx-amber-300: #f2c66b;
+  --bx-amber-400: #e6a92f;
+  --bx-amber-500: #c98a14;
+  --bx-amber-600: #a06d0c;
+  --bx-sky-300: #8dcdf0;
+  --bx-sky-400: #4aabe4;
+  --bx-sky-500: #2088c9;
+  --bx-sky-600: #156aa3;
+  --bx-white: #ffffff;
+  --bx-black: #000000;
+
+  --bx-radius-sm: 4px;
+  --bx-radius-md: 6px;
+  --bx-radius-lg: 8px;
+  --bx-radius-xl: 12px;
+  --bx-radius-2xl: 16px;
+  --bx-blur-lg: 28px;
+  /* --font-geist and --font-code are set by next/font in apps/web/app/layout.tsx. */
+  --bx-font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --bx-font-mono: var(--font-code), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --bx-font-size-md: 14px;
+  --bx-line-height-normal: 1.5;
+}
+
+/* Dark: the default, and whenever data-theme is anything but "light". */
+:root,
+[data-theme="dark"] {
+  --bx-canvas: var(--bx-slate-950);
+  --bx-surface: var(--bx-slate-900);
+  --bx-surface-raised: var(--bx-slate-850);
+  --bx-surface-inset: var(--bx-slate-950);
+  --bx-fg: var(--bx-slate-50);
+  --bx-fg-muted: var(--bx-slate-300);
+  --bx-fg-faint: var(--bx-slate-500);
+  --bx-border: var(--bx-slate-800);
+  --bx-border-strong: var(--bx-slate-700);
+  --bx-accent: var(--bx-sky-400);
+  --bx-accent-hover: var(--bx-sky-300);
+  --bx-on-accent: var(--bx-slate-950);
+  --bx-success: var(--bx-green-400);
+  --bx-warn: var(--bx-amber-400);
+  --bx-danger: var(--bx-red-400);
+  --bx-info: var(--bx-sky-400);
+  --bx-scrim: var(--bx-black);
+}
+
+[data-theme="light"] {
+  --bx-canvas: var(--bx-slate-100);
+  --bx-surface: var(--bx-slate-50);
+  --bx-surface-raised: var(--bx-white);
+  --bx-surface-inset: var(--bx-slate-100);
+  --bx-fg: var(--bx-slate-900);
+  --bx-fg-muted: var(--bx-slate-600);
+  --bx-fg-faint: var(--bx-slate-400);
+  --bx-border: var(--bx-slate-200);
+  --bx-border-strong: var(--bx-slate-300);
+  --bx-accent: var(--bx-sky-500);
+  --bx-accent-hover: var(--bx-sky-600);
+  --bx-on-accent: var(--bx-white);
+  --bx-success: var(--bx-green-600);
+  --bx-warn: var(--bx-amber-600);
+  --bx-danger: var(--bx-red-600);
+  --bx-info: var(--bx-sky-600);
+  --bx-scrim: var(--bx-slate-900);
+}
+
+/* Tailwind names for the tokens: bg-surface, text-fg-muted, border-action... */
+@theme {
+  --color-canvas: var(--bx-canvas);
+  --color-surface: var(--bx-surface);
+  --color-surface-raised: var(--bx-surface-raised);
+  --color-surface-inset: var(--bx-surface-inset);
+  --color-fg: var(--bx-fg);
+  --color-fg-muted: var(--bx-fg-muted);
+  --color-fg-faint: var(--bx-fg-faint);
+  --color-border-default: var(--bx-border);
+  --color-border-strong: var(--bx-border-strong);
+  --color-action: var(--bx-accent);
+  --color-action-hover: var(--bx-accent-hover);
+  --color-on-action: var(--bx-on-accent);
+  --color-focus-ring: var(--bx-accent);
+  --color-success: var(--bx-success);
+  --color-warn: var(--bx-warn);
+  --color-danger: var(--bx-danger);
+  --color-info: var(--bx-info);
+  --color-map-selection: var(--bx-accent);
+  --color-map-scrim: var(--bx-scrim);
+
+  /* Code-like text (keys, sizes, counts) in Fira Code. */
+  --font-mono: var(--bx-font-mono);
+  /* The app's compact type: 11px and 13px in place of Tailwind's 12 and 14. */
+  --text-xs: 11px;
+  --text-sm: 13px;
+}
+
+/* Floating panels over the map. Slightly translucent with a blur so the map
+   reads through at the edges; the strong variant is for content that needs
+   full contrast (the palette, the legend). */
+.bx-surface {
+  background-color: color-mix(in srgb, var(--bx-surface) 88%, transparent);
+  border: 1px solid var(--bx-border);
+  border-radius: var(--bx-radius-xl);
+  color: var(--bx-fg);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--bx-scrim) 45%, transparent);
+  -webkit-backdrop-filter: blur(var(--bx-blur-lg)) saturate(140%);
+  backdrop-filter: blur(var(--bx-blur-lg)) saturate(140%);
+}
+
+.bx-surface-strong {
+  background-color: color-mix(in srgb, var(--bx-surface-raised) 96%, transparent);
+  border: 1px solid var(--bx-border-strong);
+  border-radius: var(--bx-radius-xl);
+  color: var(--bx-fg);
+  box-shadow: 0 24px 56px color-mix(in srgb, var(--bx-scrim) 55%, transparent);
+  -webkit-backdrop-filter: blur(var(--bx-blur-lg)) saturate(140%);
+  backdrop-filter: blur(var(--bx-blur-lg)) saturate(140%);
+}
+
+/* The palette's tile mark while the agent works: each cell fades up and
+   settles, staggered by an inline delay. */
+@keyframes bx-tile-pulse {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+.bx-tile-cell {
+  animation: bx-tile-pulse 1.2s ease-in-out infinite;
+}
