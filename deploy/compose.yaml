@@ -1,0 +1,57 @@
+# Bhoonidhi Explorer in one container: the web app and its API. It reads
+# scenes from a STAC API, the public Bhoonidhi catalogue unless STAC_API_URL
+# names another. Settings: one .env at the repository root (copy
+# .env.example). Run from the repository root:
+#
+#   docker compose -f deploy/compose.yaml --env-file .env up -d
+name: bhoonidhi-explorer
+
+services:
+  explorer:
+    build:
+      context: ..
+      dockerfile: deploy/explorer.Dockerfile
+    image: ${EXPLORER_IMAGE:-bhoonidhi-explorer}:${EXPLORER_TAG:-local}
+    ports:
+      - "${EXPLORER_BIND:-127.0.0.1}:${EXPLORER_PORT:-8080}:8080"
+    # Lets OPENAI_BASE_URL name a model server on the Docker host, on Linux too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:?set OPENAI_BASE_URL in .env}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:?set OPENAI_MODEL in .env}
+      STAC_API_URL: ${STAC_API_URL:-https://bhoonidhi-stac.ecotrakr.in}
+      GEOCODER_URL: ${GEOCODER_URL:-https://nominatim.openstreetmap.org}
+      GEOCODER_USER_AGENT: ${GEOCODER_USER_AGENT:-bhoonidhi-explorer/0.1}
+      SESSIONS_DB: /app/data/sessions.db
+      CONVERSATION_RETENTION_DAYS: ${CONVERSATION_RETENTION_DAYS:-7}
+      MODEL_SLOTS: ${MODEL_SLOTS:-4}
+      MODEL_QUEUE_MAX: ${MODEL_QUEUE_MAX:-20}
+      MODEL_QUEUE_WAIT_S: ${MODEL_QUEUE_WAIT_S:-180}
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+    volumes:
+      # Conversations (SQLite). Back this up.
+      - explorer-data:/app/data
+      # bhd's product list, kept so a restart while Bhoonidhi is unreachable still has it.
+      - bhd-cache:/home/app/.bhoonidhi
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # The start refreshes the product list (up to 60 s) before the server runs.
+      start_period: 90s
+    mem_limit: 768m
+    cpus: 1.0
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  explorer-data:
+  bhd-cache:
