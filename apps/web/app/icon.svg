@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30">
+  <!-- The palette's tile mark. A tab icon cannot read the page's theme
+       tokens, so it carries their values: sky-500 on light browser chrome,
+       sky-400 on dark, the explorer's accent pair. -->
+  <style>
+    rect { fill: #2088c9; }
+    @media (prefers-color-scheme: dark) { rect { fill: #4aabe4; } }
+  </style>
+  <rect x="1" y="1" width="8" height="8" rx="1.5"/>
+  <rect x="11" y="1" width="8" height="8" rx="1.5"/>
+  <rect x="21" y="1" width="8" height="8" rx="1.5"/>
+  <rect x="1" y="11" width="8" height="8" rx="1.5"/>
+  <rect x="11" y="11" width="8" height="8" rx="1.5"/>
+  <rect x="21" y="11" width="8" height="8" rx="1.5"/>
+  <rect x="1" y="21" width="8" height="8" rx="1.5"/>
+  <rect x="11" y="21" width="8" height="8" rx="1.5"/>
+  <rect x="21" y="21" width="8" height="8" rx="1.5"/>
+</svg>
