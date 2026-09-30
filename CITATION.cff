@@ -5,7 +5,7 @@ abstract: >-
   Bhoonidhi Explorer finds satellite scenes in ISRO's Bhoonidhi archive from a
   question in plain words or a query form, shows them on a map, and hands off
   the commands that download them under the user's own Bhoonidhi login. It
-  searches a STAC catalogue of the archive's scene metadata, built by
+  searches a STAC API over the archive's scene metadata, built by
   bhoonidhi-stac.
 type: software
 authors:

@@ -1,5 +1,5 @@
 # Bhoonidhi Explorer in one container: the web app and its API. It reads
-# scenes from a STAC API, the public Bhoonidhi catalogue unless STAC_API_URL
+# scenes from a STAC API, the public Bhoonidhi STAC API unless STAC_API_URL
 # names another. Settings: one .env at the repository root (copy
 # .env.example). Run from the repository root:
 #

@@ -11,7 +11,7 @@ The first public release.
   commands or an MCP prompt that download them. Saved sessions, place search,
   areas drawn on the map, the archive browser, GeoJSON export of footprints.
 - `deploy/compose.yaml`: the explorer in one container, reading the public
-  Bhoonidhi catalogue by default (`STAC_API_URL`).
+  Bhoonidhi STAC API by default (`STAC_API_URL`).
 - Model settings for any OpenAI-compatible server: `OPENAI_BASE_URL`,
   `OPENAI_API_KEY`, `OPENAI_MODEL`.
 - A line for the model: `MODEL_SLOTS` questions are answered at once, up to

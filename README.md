@@ -4,13 +4,13 @@ Find satellite scenes in ISRO's Bhoonidhi archive by asking in plain words or
 by filling in a query, see them on a map, and leave with the `bhd` commands
 that download them.
 
-> **An unofficial, metadata-only catalogue.** Bhoonidhi Explorer is not
+> **Unofficial and metadata-only.** Bhoonidhi Explorer is not
 > affiliated with or endorsed by ISRO or NRSC. It stores scene footprints and
 > descriptive fields only; it never stores or serves imagery, and it never
 > downloads. Metadata © ISRO-IRS (and each foreign mission's provider), reused
 > under the open-data terms of the
 > [Bhoonidhi EULA](https://bhoonidhi.nrsc.gov.in/bhoonidhi/htmls/TnC.html).
-> Availability is as of the last catalogue update. Downloading any scene needs
+> Availability is as of the last update of the STAC API's data. Downloading any scene needs
 > your own free Bhoonidhi account.
 
 You can search the metadata without an account or API approval. Downloads
@@ -23,7 +23,7 @@ explorer's sibling tools:
 - [`bhoonidhi-mcp`](https://github.com/geovicco-dev/bhoonidhi-mcp): the same,
   for AI agents.
 - [`bhoonidhi-stac`](https://github.com/geovicco-dev/bhoonidhi-stac): the
-  catalogue of scene metadata the explorer searches.
+  STAC API of scene metadata the explorer searches.
 
 Under the
 [Indian Space Policy 2023](https://www.isro.gov.in/media_isro/pdf/IndianSpacePolicy2023.pdf),
@@ -45,7 +45,7 @@ docker compose -f deploy/compose.yaml --env-file .env up -d
 Open http://localhost:8080 and ask, for example, "LISS-4 scenes over Delhi in
 August 2026".
 
-The explorer reads scenes from the public Bhoonidhi catalogue,
+The explorer reads scenes from the public Bhoonidhi STAC API,
 https://bhoonidhi-stac.ecotrakr.in, unless `STAC_API_URL` names another. The
 [self-hosting guide](docs/self-hosting.md) covers every setting and backups.
 
@@ -61,7 +61,7 @@ https://bhoonidhi-stac.ecotrakr.in, unless `STAC_API_URL` names another. The
 
 ## Where the scenes come from
 
-The scenes come from a [STAC](https://stacspec.org/) catalogue of the
+The scenes come from a [STAC](https://stacspec.org/) API over the
 Bhoonidhi portal's scene metadata, one collection per satellite and sensor,
 so a search answers in about a second instead of the portal's thirty. It is
 built and kept current by
@@ -69,12 +69,12 @@ built and kept current by
 methods page lists every field and rule. Quicklook images stay on the portal:
 the explorer links to them and never copies them.
 
-What the catalogue cannot tell you:
+What the STAC API cannot tell you:
 
-- Availability changes: a scene that could be downloaded when the catalogue
-  last ran may need ordering now. `bhd` searches the live portal when you run
+- Availability changes: a scene that could be downloaded when the STAC API
+  was last updated may need ordering now. `bhd` searches the live portal when you run
   it, and says what it finds.
-- The catalogue lags the portal by up to a week.
+- The STAC API lags the portal by up to a week.
 - Footprints are the portal's; some products report a scene's bounding box
   rather than its exact outline.
 
@@ -86,7 +86,7 @@ cp apps/web/.env.example apps/web/.env.local
 pnpm --filter web dev                 # http://localhost:3000
 
 uv sync --all-packages                # the API's Python environment
-cd apps/api && cp .env.example .env   # model, catalogue, place search
+cd apps/api && cp .env.example .env   # model, STAC API, place search
 uv run python run.py                  # http://127.0.0.1:8787
 ```
 

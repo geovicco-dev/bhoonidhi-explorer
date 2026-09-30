@@ -24,9 +24,9 @@ import { useChatStore, type TimelineItem } from "./store"
 // search_scenes is an older tool that saved conversations may still hold.
 const TOOL_ACTIVITY: Record<string, string> = {
   resolve_location: "Resolving the location",
-  search_catalog: "Searching the catalogue",
+  search_catalog: "Searching the STAC API",
   query_catalog: "Running the query",
-  list_collections: "Reading the catalogue",
+  list_collections: "Reading the STAC API's collections",
   bhd_command: "Writing the download commands",
   search_scenes: "Searching the live portal",
   plot_scenes: "Plotting scenes on the map",
@@ -34,7 +34,7 @@ const TOOL_ACTIVITY: Record<string, string> = {
 
 // plot_scenes is a client-side step; tool names are shown as-is.
 function toolLabel(name: string): string {
-  return name === "plot_scenes" ? "Plot scenes on map" : name === "query_catalog" ? "Query the catalogue (no agent)" : name
+  return name === "plot_scenes" ? "Plot scenes on map" : name === "query_catalog" ? "Query the STAC API (no agent)" : name
 }
 
 type Download = { loading?: boolean; steps?: { what: string; command: string }[]; note?: string; error?: string }

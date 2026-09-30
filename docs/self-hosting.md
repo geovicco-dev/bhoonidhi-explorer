@@ -17,7 +17,7 @@ One container, `explorer`: the web app at `/` and the API at `/api`, on
 
 ```
 browser ─► explorer :8080 ─┬─ /       the web app (static files)
-                           └─ /api/*  the API ─┬─► the catalogue (STAC_API_URL)
+                           └─ /api/*  the API ─┬─► the STAC API (STAC_API_URL)
                                                ├─► the model (OPENAI_BASE_URL)
                                                ├─► Nominatim (place search)
                                                └─► bhoonidhi.nrsc.gov.in (quicklooks, product list)
@@ -32,7 +32,7 @@ browser ─► explorer :8080 ─┬─ /       the web app (static files)
 | `OPENAI_BASE_URL` | Any OpenAI-compatible server with tool calling | required |
 | `OPENAI_API_KEY` | Its key (secret); local servers usually need none | empty |
 | `OPENAI_MODEL` | Model id | required |
-| `STAC_API_URL` | The catalogue's STAC API | `https://bhoonidhi-stac.ecotrakr.in` |
+| `STAC_API_URL` | The STAC API the scenes come from | `https://bhoonidhi-stac.ecotrakr.in` |
 | `GEOCODER_URL`, `GEOCODER_USER_AGENT` | Nominatim for place search; its policy requires a User-Agent naming the app | public Nominatim |
 | `CONVERSATION_RETENTION_DAYS` | Days a conversation is kept after its last activity; `0` keeps them forever | `7` |
 | `MODEL_SLOTS`, `MODEL_QUEUE_MAX`, `MODEL_QUEUE_WAIT_S` | The line for the model: questions answered at once (match your model server's parallel limit), questions allowed to wait, and the longest wait in seconds. A question past either limit is refused with a message pointing to the query form | `4`, `20`, `180` |
@@ -59,19 +59,19 @@ release's commit, with base images pinned by digest; the image's
 
 ## The model
 
-The explorer's agent calls tools (place lookup, catalogue search, `bhd`
+The explorer's agent calls tools (place lookup, STAC API search, `bhd`
 commands), so the model must support tool calling. `host.docker.internal` in
 `OPENAI_BASE_URL` reaches a server on the machine running Docker, on Linux as
-well. A turn usually takes 10 to 40 seconds on a local model; the catalogue
+well. A turn usually takes 10 to 40 seconds on a local model; the STAC API
 itself answers in about a second.
 
-## The catalogue
+## The STAC API
 
-By default the explorer reads the public catalogue,
+By default the explorer reads the public Bhoonidhi STAC API,
 https://bhoonidhi-stac.ecotrakr.in, which is read-only and needs no key. To
 run your own, see [`bhoonidhi-stac`](https://github.com/geovicco-dev/bhoonidhi-stac)
 and set `STAC_API_URL` to its STAC API. The explorer reads the collection
-list once at start, so restart it after the catalogue gains a collection.
+list once at start, so restart it after the STAC API gains a collection.
 
 ## How the image is built
 

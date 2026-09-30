@@ -35,7 +35,7 @@ const SHORTCUTS: { section: string; keys: [string, string][] }[] = [
       ["Ctrl K", "Open or close the palette"],
       [">", "Commands"],
       ["@", "Search for a place"],
-      ["?", "Query the catalogue"],
+      ["?", "Query the STAC API"],
       ["\\a", "Browse the archive"],
       ["\\n", "New session"],
       ["[", "Session tab"],
@@ -119,7 +119,7 @@ export function useCommands(
     // Search
     {
       id: "query:open",
-      label: "Query the catalogue",
+      label: "Query the STAC API",
       detail: "Pick satellites, products, dates and filters in a form",
       keywords: "query search form filter stac browser structured",
       icon: <IconFilter size={16} />,

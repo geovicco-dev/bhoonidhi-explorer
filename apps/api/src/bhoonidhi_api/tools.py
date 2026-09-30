@@ -292,7 +292,7 @@ def _availability_value(wanted: str | None) -> tuple[str | None, str | None]:
         if key in (re.sub(r"[^a-z]", "", member.value.lower()), re.sub(r"[^a-z]", "", member.label.lower())):
             return member.value, None
     return None, (
-        f"{wanted!r} is not an availability the catalogue uses. "
+        f"{wanted!r} is not an availability the STAC API uses. "
         f"It has {', '.join(m.label for m in Availability)}."
     )
 
@@ -319,7 +319,7 @@ def _no_such_level(resolved: names.Resolved) -> dict[str, Any]:
         "error": (
             f"These satellites do not have {', '.join(resolved.missing_products)}."
             if held else
-            f"The catalogue does not record product levels for {resolved.collections[0].satellite}."
+            f"The STAC API does not record product levels for {resolved.collections[0].satellite}."
         ),
         "product_levels": held,
         "hint": "Tell the user which levels exist and ask which they want, or search without a level.",
@@ -349,7 +349,7 @@ def _item_to_scene(item: dict[str, Any]) -> dict[str, Any]:
 def _unknown_names(resolved: names.Resolved, cat: list[names.Collection]) -> dict[str, Any]:
     return {
         "status": "unknown_name",
-        "error": f"Not a satellite or sensor in the catalogue: {', '.join(resolved.unknown)}.",
+        "error": f"Not a satellite or sensor in the STAC API: {', '.join(resolved.unknown)}.",
         "satellites": names.satellites(cat),
         "hint": "Ask the user which of these they meant, or call list_collections for sensors.",
     }
@@ -562,7 +562,7 @@ async def run_search(
     try:
         data = await _stac("POST", "/search", json=body)
     except httpx.HTTPError as exc:
-        return {"status": "error", "error": f"Catalogue search failed: {exc}"}
+        return {"status": "error", "error": f"STAC API search failed: {exc}"}
 
     # Asking for whole-area cover and getting nothing usually means no single
     # scene is that big, not that there is no imagery. Say so with the number
@@ -612,7 +612,7 @@ async def run_search(
         "more_available": more,
         "availability_summary": dict(Counter(s["availability"] or "Unknown" for s in scenes)),
         "by_satellite": dict(per_sat.most_common()),
-        "note": "The catalogue is updated weekly; scenes from the last few days may not be in it yet.",
+        "note": "The STAC API is updated weekly; scenes from the last few days may not be in it yet.",
         "scenes": scenes,
     }
     if selections:
@@ -703,7 +703,7 @@ async def bhd_command(
         ],
         "note": (
             "Runs on your machine under your login. bhd searches the live portal, "
-            "so it can also find scenes newer than the catalogue. Only Ready scenes "
+            "so it can also find scenes newer than the STAC API has. Only Ready scenes "
             "download straight away; Archived ones may need a request on the portal first."
         ),
     }

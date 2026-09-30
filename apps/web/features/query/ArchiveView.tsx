@@ -245,7 +245,7 @@ export function ArchiveView({ filter }: { filter: string }) {
                             <span className="text-fg-faint">
                               {" "}
                               · {p.description}
-                              {!p.has_scenes && " · no scenes in the catalogue yet"}
+                              {!p.has_scenes && " · no scenes in the STAC API yet"}
                             </span>
                           </span>
                           <span className="shrink-0 font-mono text-[10.5px] text-fg-faint">

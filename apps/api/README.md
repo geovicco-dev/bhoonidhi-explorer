@@ -6,48 +6,48 @@ places and
 search Bhoonidhi scenes, and each step (tool calls, results with scene
 footprints, the answer) streams to the browser as Server-Sent Events.
 
-Scenes come from one place: **the catalogue**, a STAC API over the scene
+Scenes come from one place: **the STAC API** over the scene
 metadata that [`bhoonidhi-stac`](https://github.com/geovicco-dev/bhoonidhi-stac)
 builds and updates weekly; by default the public one. It can lag the portal
 by a week. The live Bhoonidhi portal is never searched; only the
-quicklook images are fetched from it (the catalogue links to them), through
+quicklook images are fetched from it (the STAC API links to them), through
 the `/quicklook` proxy.
 
 A search returns up to 1,000 scenes, newest first. When more match, the
-result says `"count": "1,000+"` and `more_available: true`; the catalogue
+result says `"count": "1,000+"` and `more_available: true`; the STAC API
 reports no total, and the API does not page past the limit to count.
 
 Satellite and sensor names are resolved in `names.py`, against the
-catalogue's own collection list: exact names stay exact, a family name
+STAC API's own collection list: exact names stay exact, a family name
 ("Sentinel-1", "resourcesat") covers its members, common alternative names
 ("RISAT-1A", "Oceansat-3", "LISS-IV", "S2") are known, and a name the
-catalogue does not hold comes back as `unknown_name` with the real list,
+STAC API does not hold comes back as `unknown_name` with the real list,
 never as a guess.
 
 A search can also narrow by **product level** ("Level-2A", "GRD", "SLC",
 "BOA-Archives"), by **availability** ("Ready", "On order"), and to scenes
 that **cover the whole area** rather than clipping a corner of it. All three
-are done by the catalogue, in one CQL2 filter.
+are done by the STAC API, in one CQL2 filter.
 
 Dates can be several windows instead of one range. "May of each year for the
 last ten years" is eleven windows, not one span from the first May to the
 last, which would also return every June through April in between. The
-catalogue tests them all in a single query, and 120 windows cost about the
+STAC API tests them all in a single query, and 120 windows cost about the
 same as one. The result states what it covered
 (`"May of 2016 to 2026, 11 windows"`) so the answer can repeat it back.
 
 Product levels live only inside a scene's `SELECTION` value, and each family
 spells them its own way (`Level-2A` for Sentinel-2, `L2` for AWiFS, eight
 different ones for NISAR). The list of them comes from `archive.py`, which
-reads the portal's own catalogue out of the cache `bhd` keeps at
+reads the portal's own product list out of the cache `bhd` keeps at
 `~/.bhoonidhi/archive.json`. That file is written when the user runs
 `bhd archive list`; the API only reads it, and falls back to the levels seen
-in the catalogue's items when it is missing. Refresh it with
+in the STAC API's items when it is missing. Refresh it with
 `bhd archive list --refresh`.
 
 The agent says how it read the question: which months a season meant, which
 dates it covered, and when a word has no single meaning ("dry periods") it
-asks rather than choosing. A word the catalogue cannot filter (cloud cover,
+asks rather than choosing. A word the STAC API cannot filter (cloud cover,
 pass direction, sun angle, off-nadir) is named as not recorded instead of
 being quietly dropped, and an empty result carries its reason when the
 collection records know it ("Sentinel-1B SAR(IW) has nothing after
@@ -55,7 +55,7 @@ collection records know it ("Sentinel-1B SAR(IW) has nothing after
 
 The agent never downloads: for data it returns the `bhd` commands the user
 runs on their own machine under their own Bhoonidhi login. Those commands
-search the live portal, so they can also find scenes newer than the catalogue.
+search the live portal, so they can also find scenes newer than the STAC API has.
 
 ## Prerequisites
 
@@ -66,14 +66,14 @@ search the live portal, so they can also find scenes newer than the catalogue.
   `pyproject.toml` pins. The API uses its `Availability` labels, so they
   match what `bhd` prints, and its reader for the `bhd archive` cache.
 - **The STAC API.** Without it the agent can look up places but not search
-  scenes. See [Catalogue](#catalogue-stac-api).
+  scenes. See [STAC API](#stac-api).
 
 ## Setup
 
 ```bash
 uv sync --all-packages    # from the repository root
 cd apps/api
-cp .env.example .env      # the model, the catalogue, place search
+cp .env.example .env      # the model, the STAC API, place search
 ```
 
 `.env` (loaded by `config.py`, gitignored):
@@ -85,18 +85,18 @@ cp .env.example .env      # the model, the catalogue, place search
 | `OPENAI_MODEL`    | Model id                                               | `openai/gpt-oss-20b`       |
 | `MODEL_SLOTS`, `MODEL_QUEUE_MAX`, `MODEL_QUEUE_WAIT_S` | The line for the model (`model_queue.py`): questions answered at once (match LM Studio's `parallel`), questions allowed to wait, the longest wait in seconds | `4`, `20`, `180` |
 | `FRONTEND_ORIGIN` | Allowed CORS origin (the Next.js dev server)           | `http://localhost:3000`    |
-| `STAC_API_URL`    | STAC API base URL; the only scene source. `.env.example` sets the public catalogue | _(empty)_ |
+| `STAC_API_URL`    | STAC API base URL; the only scene source. `.env.example` sets the public Bhoonidhi STAC API | _(empty)_ |
 | `SESSIONS_DB`     | SQLite file for conversations                          | `data/sessions.db`         |
 | `CONVERSATION_RETENTION_DAYS` | Days a conversation is kept after its last activity (a question, a query, a rename); checked at start and hourly. `0` keeps them forever | `7` |
 | `CLIENT_IP_HEADER` | Header holding the visitor's address for the limits below; set only behind a proxy that always writes it (`Cf-Connecting-Ip` behind Cloudflare) | _(empty: the connection's address)_ |
 | `GEOCODER_URL`    | Nominatim server for place search (`@` in the palette) | `https://nominatim.openstreetmap.org` |
 | `GEOCODER_USER_AGENT` | User-Agent sent to it; Nominatim requires one naming the app | `bhoonidhi-explorer/0.1` |
 
-## Catalogue (STAC API)
+## STAC API
 
-`.env.example` points at the public catalogue,
+`.env.example` points at the public Bhoonidhi STAC API,
 `https://bhoonidhi-stac.ecotrakr.in`, which is enough for development. To
-work against a catalogue of your own, build one with
+work against a STAC API of your own, build its data with
 [`bhoonidhi-stac`](https://github.com/geovicco-dev/bhoonidhi-stac), set
 `STAC_API_URL` to its STAC API in `apps/api/.env`, and restart the API. The
 API reads the collection list once at start.
@@ -137,7 +137,7 @@ so each browser sees only its own conversations.
 
 | Method | Path                            | Purpose                                                        |
 | ------ | ------------------------------- | -------------------------------------------------------------- |
-| GET    | `/health`                       | Liveness, tool count, whether the catalogue is on, the model line (`slots`, `answering`, `waiting`). |
+| GET    | `/health`                       | Liveness, tool count, whether the STAC API is on (the `catalogue` key), the model line (`slots`, `answering`, `waiting`). |
 | GET    | `/tools`                        | Names of the agent's tools.                                    |
 | GET    | `/conversations`                | This browser's conversations, newest first.                   |
 | POST   | `/conversations`                | Create an empty conversation.                                  |
@@ -148,7 +148,7 @@ so each browser sees only its own conversations.
 | POST   | `/conversations/{id}/chat`      | Run one turn; streams SSE. Body `{message, from_turn?, area?}`: `from_turn` replaces that turn and all later ones (edit / retry); `area` is the area of interest on the map (`{kind: "bbox", west, south, east, north}` or `{kind: "circle", lon, lat, radius_km}`, optional `name`), stored with the turn and passed to the model. A circle is searched as the exact circle. |
 | GET    | `/geocode?q=`                   | Places matching a name (Nominatim, cached, one upstream request a second). The agent's place lookup uses the same search. |
 | GET    | `/quicklook?url=`               | CORS proxy for a portal quicklook JPEG; the only call to the portal. |
-| GET    | `/query/products`               | Query mode: every satellite and product in `bhd`'s product list, with dates, resolution, access and whether the catalogue holds any of its scenes. Checked once per process, at startup. |
+| GET    | `/query/products`               | Query mode: every satellite and product in `bhd`'s product list, with dates, resolution, access and whether the STAC API holds any of its scenes. Checked once per process, at startup. |
 | POST   | `/query/check`                  | Query mode: check a query (`{query: {items, area, covers_area, dates: {from, to, yearly}, availability, max_resolution_m}}`) without searching: `{ok, problems, notes}`, each problem naming its field with a fix where one exists. The form calls this on every edit. |
 | POST   | `/query/search`                 | Query mode: check a query and search when it has no problems. A query with problems returns `status: "invalid_query"` with each problem and its fix, and is never searched. Nothing is saved. |
 | POST   | `/conversations/{id}/query`     | Run a query and save it as a turn, without the model (`{query, from_turn?}`). The agent sees it in later turns. 422 when the query has problems. |
@@ -160,7 +160,7 @@ so each browser sees only its own conversations.
 
 Five routes are limited per visitor address over the last minute, since each
 costs something upstream: `/conversations/{id}/chat` 6 (the model),
-`/query/search` and `/conversations/{id}/query` 30 together (the catalogue),
+`/query/search` and `/conversations/{id}/query` 30 together (the STAC API),
 `/quicklook` 60 (ISRO's server) and `/geocode` 20 (Nominatim). Past a limit
 they answer 429 with `Retry-After` and `{"detail": "Too many requests, try
 again in N s"}`, which the web app shows as is. Counts live in the API
@@ -192,8 +192,8 @@ waiting}`.
   missing.** The levels come from the `bhd` archive cache
   (`~/.bhoonidhi/archive.json`). If the portal has added a product since that
   file was written, run `bhd archive list --refresh`, then restart the API so
-  it re-reads the catalogue. Without the cache the API falls back to the
-  levels present in the catalogue's own items, which can miss one that the
+  it re-reads the product list. Without the cache the API falls back to the
+  levels present in the STAC API's own items, which can miss one that the
   sample did not happen to contain.
 - **"Failed to load model … Operation canceled."** (LM Studio) The server had
   unloaded the model (idle time-to-live, or a restart) and the reload did not

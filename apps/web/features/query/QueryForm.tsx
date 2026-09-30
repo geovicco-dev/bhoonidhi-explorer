@@ -115,7 +115,7 @@ function ProductList({ satellites, filter }: { satellites: ArchiveSatellite[]; f
           key={p.selection}
           type="button"
           onClick={() => toggleItem(item)}
-          title={p.has_scenes ? p.description : "No scenes in the catalogue yet"}
+          title={p.has_scenes ? p.description : "No scenes in the STAC API yet"}
           className={[
             "flex w-full items-center gap-2 rounded-md py-0.5 pr-2 pl-7 text-left text-[12px] text-fg-muted hover:bg-surface-inset hover:text-fg",
             p.has_scenes ? "" : "opacity-45",
@@ -370,7 +370,7 @@ export function QueryForm({ filter }: { filter: string }) {
               : error
                 ? "Not run: the query could not be checked"
                 : running
-                  ? "Searching the catalogue…"
+                  ? "Searching the STAC API…"
                   : agentBusy
                     ? "Waiting for the agent's answer to finish"
                     : waitingForModel

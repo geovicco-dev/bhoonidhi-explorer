@@ -170,7 +170,7 @@ def check(query: dict[str, Any], cat: list[names.Collection]) -> Checked:
     for n, item in enumerate(items):
         hits = by_item[n]
         if not hits:
-            out.problems.append(_problem("items", f"{item_name(item)} is not in the catalogue.",
+            out.problems.append(_problem("items", f"{item_name(item)} is not in the STAC API.",
                                          {"label": "Remove it", "remove_item": n}, n))
             continue
         chosen.extend(hits)
@@ -242,7 +242,7 @@ def check(query: dict[str, Any], cat: list[names.Collection]) -> Checked:
                 if last:
                     fix = {"label": f"Use {last[:4]}", "set": {"dates": {"from": f"{last[:4]}-01-01", "to": last, "yearly": False}}}
                 out.problems.append(_problem(
-                    "dates", f"{item_name(items[n])} has nothing in the catalogue for these dates: its scenes run {span}.",
+                    "dates", f"{item_name(items[n])} has nothing in the STAC API for these dates: its scenes run {span}.",
                     fix, n))
             elif hits and len(live) < len(hits):
                 gone = ", ".join(f"{c.satellite} {c.sensor}" for c in hits if c not in live)
