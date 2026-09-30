@@ -16,3 +16,6 @@ data
 docs
 apps/api/data
 apps/api/tests
+
+# Local archive, kept on the working machine
+archive

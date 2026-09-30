@@ -33,3 +33,6 @@ npm-debug.log*
 # OS
 .DS_Store
 *.pem
+
+# Local archive of old checkouts and history bundles, kept on the working machine
+/archive/
