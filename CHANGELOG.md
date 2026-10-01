@@ -19,6 +19,14 @@
   several selected scenes, the copied commands and prompt download only the
   Ready ones, and the tooltip counts the others.
 
+### Security
+
+- The lockfile resolves the build and lint tools' dependencies, and those
+  of Next.js, to versions without known security advisories:
+  brace-expansion, browserslist, js-yaml, nanoid, postcss, undici,
+  baseline-browser-mapping, fast-uri, hono and ip-address. None of them
+  is in the image the site runs.
+
 ## [0.1.0] - 2026-09-29
 
 The first public release.
