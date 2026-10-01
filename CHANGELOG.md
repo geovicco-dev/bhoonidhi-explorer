@@ -13,6 +13,11 @@
 
 - The scene card's "Zoom to scene" button reads "Zoom", with the full name
   in its tooltip, so the four buttons fit on one line.
+- The CLI and MCP copy buttons are offered only for Ready scenes. On the
+  scene card they are disabled for an Archived, On order or Priced scene,
+  and their tooltip says how to get it from the Bhoonidhi portal. For
+  several selected scenes, the copied commands and prompt download only the
+  Ready ones, and the tooltip counts the others.
 
 ## [0.1.0] - 2026-09-29
 
