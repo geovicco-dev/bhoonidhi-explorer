@@ -31,6 +31,7 @@ import { QueryForm, useRunQuery } from "@/features/query/QueryForm"
 import { ArchiveView } from "@/features/query/ArchiveView"
 import { QUERY_KEYS, SHORTCUT_PREFIX, openArchive, openQueryForm } from "@/features/query/open"
 import { useQueryStore } from "@/features/query/store"
+import { LegendStrip } from "@/features/scene/AvailabilityLegend"
 
 // The one control surface. A bar at the top left of the map:
 //   - plain text is a question for the agent (Enter sends);
@@ -453,9 +454,13 @@ export function CommandPalette() {
         .join(" · ")
 
   return (
+    // The shell itself takes no pointer events: below 1024px it also holds the
+    // legend strip, and the map beside the strip must still pan. Its height is
+    // capped so the strip stays on screen under an open panel; the panel
+    // shrinks instead.
     <div
       ref={shellRef}
-      className="pointer-events-auto absolute top-4 left-4 z-30 flex w-[40rem] max-w-[calc(100vw-2rem)] flex-col gap-2"
+      className="pointer-events-none absolute top-4 left-4 z-30 flex max-h-[calc(100vh-2rem)] w-[40rem] max-w-[calc(100vw-2rem)] flex-col gap-2"
     >
       <motion.div
         layout
@@ -467,7 +472,7 @@ export function CommandPalette() {
         // (the input row's own top inset).
         data-map-inset={expanded ? "left" : undefined}
         className={[
-          "bx-surface-strong flex flex-col overflow-hidden rounded-xl text-fg",
+          "bx-surface-strong pointer-events-auto flex flex-col overflow-hidden rounded-xl text-fg",
           expanded ? "max-h-[min(32rem,calc(100vh-2rem))] shadow-2xl" : "shadow-lg",
         ].join(" ")}
       >
@@ -842,6 +847,7 @@ export function CommandPalette() {
         </AnimatePresence>
       </motion.div>
 
+      <LegendStrip />
     </div>
   )
 }

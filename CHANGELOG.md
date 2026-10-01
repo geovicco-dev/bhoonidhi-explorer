@@ -13,6 +13,9 @@
 
 - The scene card's "Zoom to scene" button reads "Zoom", with the full name
   in its tooltip, so the four buttons fit on one line.
+- Below 1024px wide the legend is one line under the palette bar, or under
+  the open palette: the four colours and their names. The palette no
+  longer covers it. From 1024px up the legend panel is unchanged.
 
 ### Fixed
 
