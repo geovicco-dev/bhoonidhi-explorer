@@ -13,6 +13,11 @@
 
 - The scene card's "Zoom to scene" button reads "Zoom", with the full name
   in its tooltip, so the four buttons fit on one line.
+- The CLI and MCP copy buttons are offered only for Ready scenes. On the
+  scene card they are disabled for an Archived, On order or Priced scene,
+  and their tooltip says how to get it from the Bhoonidhi portal. For
+  several selected scenes, the copied commands and prompt download only the
+  Ready ones, and the tooltip counts the others.
 - Below 1024px wide the legend is one line under the palette bar, or under
   the open palette: the four colours and their names. The palette no
   longer covers it. From 1024px up the legend panel is unchanged.
@@ -32,6 +37,14 @@
   label sits above its field, so the form no longer scrolls sideways and
   its rows keep their right margin. The palette's key hints move to a
   second line when they do not fit.
+
+### Security
+
+- The lockfile resolves the build and lint tools' dependencies, and those
+  of Next.js, to versions without known security advisories:
+  brace-expansion, browserslist, js-yaml, nanoid, postcss, undici,
+  baseline-browser-mapping, fast-uri, hono and ip-address. None of them
+  is in the image the site runs.
 
 ## [0.1.0] - 2026-09-29
 
