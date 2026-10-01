@@ -118,6 +118,19 @@ def test_only_catalogue_tools_are_offered(monkeypatch):
     assert names == {"resolve_location", "search_catalog", "list_collections", "bhd_command"}
 
 
+def test_stac_public_url_falls_back_to_the_api_url(monkeypatch):
+    monkeypatch.setattr(settings, "stac_api_url", "")
+    monkeypatch.setattr(settings, "stac_public_url", "")
+    assert tools.stac_public_url() is None
+    # A STAC API this server reaches by its container name, with no public one set.
+    monkeypatch.setattr(settings, "stac_api_url", "http://stac-api:8082/")
+    assert tools.stac_public_url() == "http://stac-api:8082"
+    # The public address wins for the browser; searches still use the local one.
+    monkeypatch.setattr(settings, "stac_public_url", "https://stac.example.org/")
+    assert tools.stac_public_url() == "https://stac.example.org"
+    assert settings.stac_api_url == "http://stac-api:8082/"
+
+
 def test_catalogue_reads_portal_names_from_items(fake_stac):
     cat = {c.id: c for c in asyncio.run(tools.catalogue())}
     assert cat["resourcesat-2a-liss4-mx23"].satellite == "ResourceSat-2A"
