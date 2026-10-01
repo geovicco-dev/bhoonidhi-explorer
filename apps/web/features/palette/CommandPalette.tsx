@@ -773,8 +773,8 @@ export function CommandPalette() {
                 </>
               )}
 
-              {/* Key hints */}
-              <div className="flex shrink-0 items-center gap-3 border-t border-border-default px-3 py-1.5 text-[10px] text-fg-faint">
+              {/* Key hints: those that do not fit move to a second line. */}
+              <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border-default px-3 py-1.5 text-[10px] text-fg-faint">
                 {formView ? (
                   <>
                     {view === "query" && (

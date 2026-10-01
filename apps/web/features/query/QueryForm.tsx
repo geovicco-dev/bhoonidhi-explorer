@@ -39,11 +39,17 @@ function isoDate(mdY: string | null): string {
   return y && m && d ? `${y}-${m}-${d}` : mdY
 }
 
+// On a phone held upright the label sits above its field, so the field gets
+// the form's full width; from 480px up the labels form a column on the left.
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-start gap-3 px-3 py-1.5">
-      <span className="w-20 shrink-0 pt-1 text-xs text-fg-faint">{label}</span>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">{children}</div>
+    <div className="flex flex-col gap-1 px-3 py-1.5 min-[480px]:flex-row min-[480px]:items-start min-[480px]:gap-3">
+      <span className="text-xs text-fg-faint min-[480px]:w-20 min-[480px]:shrink-0 min-[480px]:pt-1">
+        {label}
+      </span>
+      <div className="flex min-w-0 flex-col gap-1 min-[480px]:flex-1">
+        {children}
+      </div>
     </div>
   )
 }

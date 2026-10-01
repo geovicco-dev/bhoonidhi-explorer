@@ -28,6 +28,10 @@
   until the floating panels stop moving, so the scene or area is framed in
   the space they leave. A panel still opening or shrinking was measured
   half way and could leave the footprint behind it.
+- On a phone the query form fits inside the palette: below 480px each
+  label sits above its field, so the form no longer scrolls sideways and
+  its rows keep their right margin. The palette's key hints move to a
+  second line when they do not fit.
 
 ## [0.1.0] - 2026-09-29
 
