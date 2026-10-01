@@ -16,6 +16,9 @@
 - Below 1024px wide the legend is one line under the palette bar, or under
   the open palette: the four colours and their names. The palette no
   longer covers it. From 1024px up the legend panel is unchanged.
+- The map credits wrap before they reach the map buttons. Below 1280px an
+  open scene card sits just above the map buttons or the open credits, so
+  it no longer covers them; from 1280px up it stays at the bottom.
 
 ### Fixed
 

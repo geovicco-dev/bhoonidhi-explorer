@@ -26,7 +26,7 @@ export function MapOverlay() {
             <SelectedSceneCard />
             <AvailabilityLegend />
 
-            <div className="pointer-events-auto absolute bottom-2 right-2">
+            <div data-bottom-chrome className="pointer-events-auto absolute bottom-2 right-2">
                 <Toolbar orientation="vertical">
                     <DrawButton />
                     <ToolButton className="size-6" icon={<IconPlus size={20} />} label="Zoom In" shortcut="+" onClick={() => map?.zoomIn()} />

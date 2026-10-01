@@ -53,6 +53,8 @@ export class AttributionControl implements maplibregl.IControl {
     this.map = map
     this.container.className =
       "maplibregl-ctrl maplibregl-ctrl-attrib maplibregl-compact maplibregl-compact-show"
+    // The selected-scene card keeps clear of it (SelectedSceneCard).
+    this.container.dataset.bottomChrome = ""
     const button = document.createElement("button")
     button.type = "button"
     button.className = "maplibregl-ctrl-attrib-button"
