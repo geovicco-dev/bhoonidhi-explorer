@@ -19,6 +19,13 @@
   several selected scenes, the copied commands and prompt download only the
   Ready ones, and the tooltip counts the others.
 
+### Fixed
+
+- A question that names this year ("Sentinel-2 in 2026") and is turned
+  into a query in the form ends its dates on today's date in India, as the
+  model's own searches do. For the first 5½ hours after midnight in India
+  it ended them on the day before.
+
 ## [0.1.0] - 2026-09-29
 
 The first public release.
