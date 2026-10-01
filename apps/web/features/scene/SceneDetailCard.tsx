@@ -5,7 +5,7 @@ import { motion } from "motion/react"
 import { IconCheck, IconCopy, IconExternalLink, IconFocus2, IconX } from "@tabler/icons-react"
 import { copyText } from "@/lib/clipboard"
 import type { Scene } from "@/features/chat/types"
-import { AVAILABILITY } from "./availability"
+import { AVAILABILITY, isReady, portalHint } from "./availability"
 import { sceneHandoff, type Handoff } from "./handoff"
 import { useStacItemUrl } from "./stacItem"
 
@@ -25,6 +25,8 @@ type Props = {
 export function SceneDetailCard({ scene, onClose, onZoom }: Props) {
   const availability = scene.availability ? AVAILABILITY[scene.availability] : null
   const stacItemUrl = useStacItemUrl(scene)
+  // Only a Ready scene has download steps; the others come from the portal.
+  const ready = isReady(scene)
   // Which copy button last succeeded, shown as a tick for a moment.
   const [copied, setCopied] = useState<"id" | "bhd" | "prompt" | null>(null)
   // Fetched when the card opens, so a copy button copies at once: browsers
@@ -33,6 +35,7 @@ export function SceneDetailCard({ scene, onClose, onZoom }: Props) {
   const [handoffError, setHandoffError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!ready) return
     let live = true
     sceneHandoff(scene)
       .then((h) => live && setHandoff(h))
@@ -40,7 +43,7 @@ export function SceneDetailCard({ scene, onClose, onZoom }: Props) {
     return () => {
       live = false
     }
-  }, [scene])
+  }, [scene, ready])
 
   const copy = async (what: "id" | "bhd" | "prompt", text: string) => {
     if (!(await copyText(text))) return
@@ -131,10 +134,14 @@ export function SceneDetailCard({ scene, onClose, onZoom }: Props) {
             <button
               key={what}
               type="button"
-              disabled={!handoff}
+              disabled={!ready || !handoff}
               title={
-                handoffError ??
-                (what === "bhd" ? "Copy the bhd commands that download this scene" : "Copy a prompt for an agent with the bhoonidhi MCP server")
+                !ready
+                  ? portalHint(scene)
+                  : (handoffError ??
+                    (what === "bhd"
+                      ? "Copy the bhd commands that download this scene"
+                      : "Copy a prompt for an agent with the bhoonidhi MCP server"))
               }
               onClick={() => handoff && void copy(what, handoff[what])}
               className="inline-flex items-center gap-1 rounded-md border border-border-default px-1.5 py-0.5 text-[10px] font-medium text-fg transition-colors hover:bg-surface-inset focus-visible:outline-2 focus-visible:outline-focus-ring disabled:opacity-40"

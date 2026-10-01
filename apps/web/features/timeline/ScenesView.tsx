@@ -7,6 +7,7 @@ import { useTheme } from "next-themes"
 import { useChatStore, visibleScenes } from "@/features/chat/store"
 import { sceneCount, type Scene } from "@/features/chat/types"
 import { SceneDetailCard } from "@/features/scene/SceneDetailCard"
+import { isReady, portalSummary } from "@/features/scene/availability"
 import { scenesHandoff, type Handoff } from "@/features/scene/handoff"
 import { copyText } from "@/lib/clipboard"
 import { aggregateScenes, DAY_MS, overview, sceneDate } from "./aggregate"
@@ -102,7 +103,10 @@ export function ScenesView() {
     const ids = new Set(chosenIds)
     return scenes.filter((s) => ids.has(s.id))
   }, [scenes, chosenIds])
-  const handoff = useChosenHandoff(chosen)
+  // The hand-off downloads only the chosen scenes that are Ready; the
+  // tooltip names the others, which need the portal.
+  const chosenReady = useMemo(() => chosen.filter(isReady), [chosen])
+  const handoff = useChosenHandoff(chosenReady)
   const [copied, setCopied] = useState<"bhd" | "prompt" | null>(null)
   const copy = async (what: "bhd" | "prompt") => {
     if (!handoff.value || !(await copyText(handoff.value[what]))) return
@@ -148,6 +152,18 @@ export function ScenesView() {
 
   const filtered = shown.length !== scenes.length
   const none = "Select scenes first: click a card, Ctrl/Cmd+click to add one, Shift+click to add a run"
+  // What the CLI and MCP buttons say on hover, for the current selection.
+  const handoffTitle = (what: "bhd" | "prompt") => {
+    if (!chosen.length) return none
+    if (!chosenReady.length) return `No selected scene is Ready: ${portalSummary(chosen)}`
+    if (handoff.error) return handoff.error
+    const others = chosen.length > chosenReady.length ? `; ${portalSummary(chosen)}` : ""
+    const n = chosenReady.length
+    const which = others ? (n === 1 ? "the 1 Ready scene" : `the ${n.toLocaleString("en")} Ready scenes`) : "the selected scenes"
+    return what === "bhd"
+      ? `Copy the bhd commands that download ${which}${others}`
+      : `Copy a prompt for an agent with the bhoonidhi MCP server to download ${which}${others}`
+  }
 
   return (
     // The results scroll; the notice stays put below them, right above the
@@ -221,14 +237,7 @@ export function ScenesView() {
                 type="button"
                 disabled={!handoff.value}
                 onClick={() => void copy(what)}
-                title={
-                  !chosen.length
-                    ? none
-                    : (handoff.error ??
-                      (what === "bhd"
-                        ? "Copy the bhd commands that download the selected scenes"
-                        : "Copy a prompt for an agent with the bhoonidhi MCP server"))
-                }
+                title={handoffTitle(what)}
                 className={FOOTER_BUTTON}
               >
                 {copied === what ? <IconCheck size={13} className="text-success" /> : <IconCopy size={13} />}
