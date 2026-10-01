@@ -89,8 +89,11 @@ export class AttributionControl implements maplibregl.IControl {
     this.map = null
   }
 
+  // A press on the "i" is the visitor's choice: no fold by itself after it,
+  // also when it comes before the map has loaded and the timer started.
   private readonly toggle = () => {
     window.clearTimeout(this.foldTimer)
+    this.map?.off("load", this.startFoldTimer)
     this.container.classList.toggle("maplibregl-compact-show")
   }
   private readonly collapse = () => this.container.classList.remove("maplibregl-compact-show")
