@@ -18,6 +18,25 @@
   and their tooltip says how to get it from the Bhoonidhi portal. For
   several selected scenes, the copied commands and prompt download only the
   Ready ones, and the tooltip counts the others.
+- Below 1024px wide the legend is one line under the palette bar, or under
+  the open palette: the four colours and their names. The palette no
+  longer covers it. From 1024px up the legend panel is unchanged.
+- The map credits wrap before they reach the map buttons. Below 1280px an
+  open scene card sits just above the map buttons or the open credits, so
+  it no longer covers them; from 1280px up it stays at the bottom.
+- Below 1024px the map credits fold to their "i" button five seconds after
+  the map loads. A press on the "i" brings them back.
+
+### Fixed
+
+- Zoom to scene, the zoom when a scene card appears, and Zoom to area wait
+  until the floating panels stop moving, so the scene or area is framed in
+  the space they leave. A panel still opening or shrinking was measured
+  half way and could leave the footprint behind it.
+- On a phone the query form fits inside the palette: below 480px each
+  label sits above its field, so the form no longer scrolls sideways and
+  its rows keep their right margin. The palette's key hints move to a
+  second line when they do not fit.
 
 ### Security
 

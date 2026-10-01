@@ -14,6 +14,9 @@ function resolution(gsd: number | null | undefined): string {
   return typeof gsd === "number" && gsd > 0 ? `${Number(gsd.toFixed(1))} m` : "—"
 }
 
+// The open card's width; narrower screens cap it.
+export const DETAIL_CARD_WIDTH = 400
+
 // Expanded form of a strip card, rendered in place of SceneCard for the
 // selected scene. Props only; the timeline panel wires selection and zoom.
 type Props = {
@@ -55,7 +58,7 @@ export function SceneDetailCard({ scene, onClose, onZoom }: Props) {
     <motion.div
       layout
       initial={{ width: 176, opacity: 0.6 }}
-      animate={{ width: 400, opacity: 1 }}
+      animate={{ width: DETAIL_CARD_WIDTH, opacity: 1 }}
       exit={{ width: 176, opacity: 0 }}
       transition={{ type: "spring", stiffness: 380, damping: 34 }}
       // Never wider than the strip.

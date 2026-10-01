@@ -1,7 +1,7 @@
 import { useEffect } from "react"
 import type * as maplibregl from "maplibre-gl"
 import { useMap } from "@/features/map/MapProvider"
-import { mapInsets } from "@/features/map/insets"
+import { afterInsetsSettle, mapInsets } from "@/features/map/insets"
 import { resolveColor } from "@/features/map/color"
 import { useChatStore } from "@/features/chat/store"
 import { aoiBounds, aoiRing } from "./geo"
@@ -143,15 +143,19 @@ export function useAoiLayer() {
     const target = s.flyTarget ?? s.aoi
     if (!target) return
     const [w, south, e, n] = aoiBounds(target)
-    // Room under the shape for its size card.
-    const padding = mapInsets(map.getContainer())
-    padding.bottom += CARD_ROOM
-    map.fitBounds(
-      [
-        [w, south],
-        [e, n],
-      ],
-      { padding, maxZoom: 13, duration: 800 },
-    )
+    // Once the floating UI has come to rest: the area commands shrink the
+    // palette as they fly, and the legend strip rides up under it.
+    return afterInsetsSettle(() => {
+      // Room under the shape for its size card.
+      const padding = mapInsets(map.getContainer())
+      padding.bottom += CARD_ROOM
+      map.fitBounds(
+        [
+          [w, south],
+          [e, n],
+        ],
+        { padding, maxZoom: 13, duration: 800 },
+      )
+    })
   }, [map, flyRequest])
 }
