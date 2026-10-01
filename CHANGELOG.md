@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- The scene card's "STAC Item" button opens the scene's item from the STAC
+  API in a new tab. `STAC_PUBLIC_URL` names the STAC API's address for
+  visitors' browsers when `STAC_API_URL` is one only the explorer reaches;
+  empty, the link uses `STAC_API_URL`.
+
+### Changed
+
+- The scene card's "Zoom to scene" button reads "Zoom", with the full name
+  in its tooltip, so the four buttons fit on one line.
+
 ## [0.1.0] - 2026-09-29
 
 The first public release.

@@ -33,6 +33,7 @@ browser ─► explorer :8080 ─┬─ /       the web app (static files)
 | `OPENAI_API_KEY` | Its key (secret); local servers usually need none | empty |
 | `OPENAI_MODEL` | Model id | required |
 | `STAC_API_URL` | The STAC API the scenes come from | `https://bhoonidhi-stac.ecotrakr.in` |
+| `STAC_PUBLIC_URL` | The same STAC API at the address visitors' browsers reach, for the scene card's "STAC Item" link; set it when `STAC_API_URL` is an address only the explorer reaches | empty: `STAC_API_URL` |
 | `GEOCODER_URL`, `GEOCODER_USER_AGENT` | Nominatim for place search; its policy requires a User-Agent naming the app | public Nominatim |
 | `CONVERSATION_RETENTION_DAYS` | Days a conversation is kept after its last activity; `0` keeps them forever | `7` |
 | `MODEL_SLOTS`, `MODEL_QUEUE_MAX`, `MODEL_QUEUE_WAIT_S` | The line for the model: questions answered at once (match your model server's parallel limit), questions allowed to wait, and the longest wait in seconds. A question past either limit is refused with a message pointing to the query form | `4`, `20`, `180` |
@@ -72,6 +73,11 @@ https://bhoonidhi-stac.ecotrakr.in, which is read-only and needs no key. To
 run your own, see [`bhoonidhi-stac`](https://github.com/geovicco-dev/bhoonidhi-stac)
 and set `STAC_API_URL` to its STAC API. The explorer reads the collection
 list once at start, so restart it after the STAC API gains a collection.
+
+Each scene card links to the scene's STAC item, which the visitor's browser
+opens directly from the STAC API. When the explorer reaches the STAC API on
+an address visitors cannot open (a LAN address, a container name), set
+`STAC_PUBLIC_URL` to its public address; the link is built from that.
 
 ## How the image is built
 

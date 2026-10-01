@@ -22,6 +22,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:?set OPENAI_MODEL in .env}
       STAC_API_URL: ${STAC_API_URL:-https://bhoonidhi-stac.ecotrakr.in}
+      STAC_PUBLIC_URL: ${STAC_PUBLIC_URL:-}
       GEOCODER_URL: ${GEOCODER_URL:-https://nominatim.openstreetmap.org}
       GEOCODER_USER_AGENT: ${GEOCODER_USER_AGENT:-bhoonidhi-explorer/0.1}
       SESSIONS_DB: /app/data/sessions.db
