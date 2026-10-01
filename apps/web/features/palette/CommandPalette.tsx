@@ -44,6 +44,11 @@ import { LegendStrip } from "@/features/scene/AvailabilityLegend"
 const LIST_ID = "palette-list"
 const COMMAND_PREFIX = ">"
 
+// The panel's open and shut states. Module constants, so the end of the shut
+// animation can be told apart by identity in onAnimationComplete.
+const PANEL_OPEN = { opacity: 1, height: "auto" }
+const PANEL_SHUT = { opacity: 0, height: 0 }
+
 function Key({ children }: { children: ReactNode }) {
   return (
     <kbd className="rounded border border-border-default bg-surface-inset px-1.5 py-px font-mono text-[10px] text-fg-muted">
@@ -631,13 +636,18 @@ export function CommandPalette() {
           {expanded && (
             <motion.div
               key="panel"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
+              initial={PANEL_SHUT}
+              animate={PANEL_OPEN}
+              exit={PANEL_SHUT}
               transition={{ duration: 0.18 }}
               // Camera fits wait while it opens or shrinks (afterInsetsSettle).
+              // After the shrink the mark stays until the panel leaves the
+              // page: it still covers the map for a frame or two after its
+              // animation ends.
               onAnimationStart={() => panelRef.current?.setAttribute("data-map-moving", "")}
-              onAnimationComplete={() => panelRef.current?.removeAttribute("data-map-moving")}
+              onAnimationComplete={(done) => {
+                if (done !== PANEL_SHUT) panelRef.current?.removeAttribute("data-map-moving")
+              }}
               ref={panelRef}
               className="flex min-h-0 flex-1 flex-col border-t border-border-default"
             >
