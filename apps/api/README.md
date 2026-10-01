@@ -86,6 +86,7 @@ cp .env.example .env      # the model, the STAC API, place search
 | `MODEL_SLOTS`, `MODEL_QUEUE_MAX`, `MODEL_QUEUE_WAIT_S` | The line for the model (`model_queue.py`): questions answered at once (match LM Studio's `parallel`), questions allowed to wait, the longest wait in seconds | `4`, `20`, `180` |
 | `FRONTEND_ORIGIN` | Allowed CORS origin (the Next.js dev server)           | `http://localhost:3000`    |
 | `STAC_API_URL`    | STAC API base URL; the only scene source. `.env.example` sets the public Bhoonidhi STAC API | _(empty)_ |
+| `STAC_PUBLIC_URL` | The same STAC API at the address browsers reach, for the scene card's "STAC Item" link (`GET /config`); set it when `STAC_API_URL` is an address only this server reaches | _(empty: `STAC_API_URL`)_ |
 | `SESSIONS_DB`     | SQLite file for conversations                          | `data/sessions.db`         |
 | `CONVERSATION_RETENTION_DAYS` | Days a conversation is kept after its last activity (a question, a query, a rename); checked at start and hourly. `0` keeps them forever | `7` |
 | `CLIENT_IP_HEADER` | Header holding the visitor's address for the limits below; set only behind a proxy that always writes it (`Cf-Connecting-Ip` behind Cloudflare) | _(empty: the connection's address)_ |
@@ -139,6 +140,7 @@ so each browser sees only its own conversations.
 | ------ | ------------------------------- | -------------------------------------------------------------- |
 | GET    | `/health`                       | Liveness, tool count, whether the STAC API is on (the `catalogue` key), the model line (`slots`, `answering`, `waiting`). |
 | GET    | `/tools`                        | Names of the agent's tools.                                    |
+| GET    | `/config`                       | Settings the page reads at run time: `stac_public_url`, the STAC API's address for browsers (`STAC_PUBLIC_URL`, else `STAC_API_URL`; `null` when neither is set). The scene card builds each item's link from it. |
 | GET    | `/conversations`                | This browser's conversations, newest first.                   |
 | POST   | `/conversations`                | Create an empty conversation.                                  |
 | GET    | `/conversations/{id}`           | One conversation: turns (prompt + streamed events) and state. |

@@ -104,6 +104,13 @@ def stac_enabled() -> bool:
     return bool(settings.stac_api_url)
 
 
+def stac_public_url() -> str | None:
+    """The STAC API's address for browsers: STAC_PUBLIC_URL, else
+    STAC_API_URL, without a trailing slash; None when neither is set."""
+    url = (settings.stac_public_url or settings.stac_api_url).rstrip("/")
+    return url or None
+
+
 async def _stac(method: str, path: str, json: dict | None = None) -> dict[str, Any]:
     async with httpx.AsyncClient(base_url=settings.stac_api_url, timeout=60) as client:
         r = await client.request(method, path, json=json)

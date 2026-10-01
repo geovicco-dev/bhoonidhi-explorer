@@ -97,6 +97,13 @@ async def list_tools() -> dict:
     return {"tools": [t["function"]["name"] for t in specs]}
 
 
+@app.get("/config")
+async def client_config() -> dict:
+    """Settings the page needs from the server: read while it runs, so a
+    self-hosted explorer can change them without rebuilding the web app."""
+    return {"stac_public_url": tools.stac_public_url()}
+
+
 # --- conversations ---------------------------------------------------------
 
 

@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react"
 import { motion } from "motion/react"
-import { IconCheck, IconCopy, IconFocus2, IconX } from "@tabler/icons-react"
+import { IconCheck, IconCopy, IconExternalLink, IconFocus2, IconX } from "@tabler/icons-react"
 import { copyText } from "@/lib/clipboard"
 import type { Scene } from "@/features/chat/types"
 import { AVAILABILITY } from "./availability"
 import { sceneHandoff, type Handoff } from "./handoff"
+import { useStacItemUrl } from "./stacItem"
 
 // Ground resolution as the catalogue records it: "5.8 m", "20 m".
 function resolution(gsd: number | null | undefined): string {
@@ -23,6 +24,7 @@ type Props = {
 
 export function SceneDetailCard({ scene, onClose, onZoom }: Props) {
   const availability = scene.availability ? AVAILABILITY[scene.availability] : null
+  const stacItemUrl = useStacItemUrl(scene)
   // Which copy button last succeeded, shown as a tick for a moment.
   const [copied, setCopied] = useState<"id" | "bhd" | "prompt" | null>(null)
   // Fetched when the card opens, so a copy button copies at once: browsers
@@ -144,10 +146,23 @@ export function SceneDetailCard({ scene, onClose, onZoom }: Props) {
           <button
             type="button"
             onClick={onZoom}
+            title="Zoom to scene"
             className="inline-flex items-center gap-1 rounded-md border border-border-default px-1.5 py-0.5 text-[10px] font-medium text-fg transition-colors hover:bg-surface-inset focus-visible:outline-2 focus-visible:outline-focus-ring"
           >
-            <IconFocus2 size={12} /> Zoom to scene
+            <IconFocus2 size={12} /> Zoom
           </button>
+          {/* No link until the API has named the STAC API's address. */}
+          <a
+            href={stacItemUrl ?? undefined}
+            role={stacItemUrl ? undefined : "link"}
+            aria-disabled={stacItemUrl ? undefined : true}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open this scene's STAC item in a new tab"
+            className="inline-flex items-center gap-1 rounded-md border border-border-default px-1.5 py-0.5 text-[10px] font-medium text-fg transition-colors hover:bg-surface-inset focus-visible:outline-2 focus-visible:outline-focus-ring aria-disabled:pointer-events-none aria-disabled:opacity-40"
+          >
+            <IconExternalLink size={12} /> STAC Item
+          </a>
         </div>
       </div>
     </motion.div>

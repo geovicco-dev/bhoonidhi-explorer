@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # The only scene source. Empty leaves the agent able to look up places but
     # not to search scenes.
     stac_api_url: str = ""
+    # The same STAC API at the address visitors' browsers reach, for the
+    # scene card's link to each item. Set it when STAC_API_URL is an address
+    # only this server reaches; empty uses STAC_API_URL.
+    stac_public_url: str = ""
 
     # SQLite file holding conversations; created on first start.
     sessions_db: str = "data/sessions.db"
