@@ -14,6 +14,13 @@
 - The scene card's "Zoom to scene" button reads "Zoom", with the full name
   in its tooltip, so the four buttons fit on one line.
 
+### Fixed
+
+- Zoom to scene, the zoom when a scene card appears, and Zoom to area wait
+  until the floating panels stop moving, so the scene or area is framed in
+  the space they leave. A panel still opening or shrinking was measured
+  half way and could leave the footprint behind it.
+
 ## [0.1.0] - 2026-09-29
 
 The first public release.

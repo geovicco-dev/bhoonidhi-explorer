@@ -198,6 +198,7 @@ export function CommandPalette() {
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   const { suggestion, visible: suggestionVisible } = useRotatingSuggestion(!query && !hasConversation && !aoi)
 
@@ -629,6 +630,10 @@ export function CommandPalette() {
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.18 }}
+              // Camera fits wait while it opens or shrinks (afterInsetsSettle).
+              onAnimationStart={() => panelRef.current?.setAttribute("data-map-moving", "")}
+              onAnimationComplete={() => panelRef.current?.removeAttribute("data-map-moving")}
+              ref={panelRef}
               className="flex min-h-0 flex-1 flex-col border-t border-border-default"
             >
               {view === "query" ? (
