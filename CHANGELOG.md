@@ -19,6 +19,8 @@
 - The map credits wrap before they reach the map buttons. Below 1280px an
   open scene card sits just above the map buttons or the open credits, so
   it no longer covers them; from 1280px up it stays at the bottom.
+- Below 1024px the map credits fold to their "i" button five seconds after
+  the map loads. A press on the "i" brings them back.
 
 ### Fixed
 
