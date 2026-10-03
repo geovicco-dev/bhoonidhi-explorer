@@ -1,6 +1,6 @@
 [project]
 name = "bhoonidhi-api"
-version = "0.1.0"
+version = "0.2.0"
 description = "FastAPI backend for Bhoonidhi Explorer: conversations and a model-driven agent over the Bhoonidhi scene catalogue."
 requires-python = ">=3.12"
 dependencies = [
