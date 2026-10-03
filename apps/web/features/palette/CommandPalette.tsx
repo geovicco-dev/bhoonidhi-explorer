@@ -31,6 +31,7 @@ import { QueryForm, useRunQuery } from "@/features/query/QueryForm"
 import { ArchiveView } from "@/features/query/ArchiveView"
 import { QUERY_KEYS, SHORTCUT_PREFIX, openArchive, openQueryForm } from "@/features/query/open"
 import { useQueryStore } from "@/features/query/store"
+import { LegendStrip } from "@/features/scene/AvailabilityLegend"
 
 // The one control surface. A bar at the top left of the map:
 //   - plain text is a question for the agent (Enter sends);
@@ -42,6 +43,11 @@ import { useQueryStore } from "@/features/query/store"
 
 const LIST_ID = "palette-list"
 const COMMAND_PREFIX = ">"
+
+// The panel's open and shut states. Module constants, so the end of the shut
+// animation can be told apart by identity in onAnimationComplete.
+const PANEL_OPEN = { opacity: 1, height: "auto" }
+const PANEL_SHUT = { opacity: 0, height: 0 }
 
 function Key({ children }: { children: ReactNode }) {
   return (
@@ -198,6 +204,7 @@ export function CommandPalette() {
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   const { suggestion, visible: suggestionVisible } = useRotatingSuggestion(!query && !hasConversation && !aoi)
 
@@ -452,9 +459,14 @@ export function CommandPalette() {
         .join(" · ")
 
   return (
+    // The shell itself takes no pointer events: below 1024px it also holds the
+    // legend strip, and the map beside the strip must still pan. Its height is
+    // capped so the strip stays on screen under an open panel; the panel
+    // shrinks instead. Its width leaves 3.125rem at the right on narrow
+    // screens: the GitHub link (2.625rem) and an 8px gap, on the same row.
     <div
       ref={shellRef}
-      className="pointer-events-auto absolute top-4 left-4 z-30 flex w-[40rem] max-w-[calc(100vw-2rem)] flex-col gap-2"
+      className="pointer-events-none absolute top-4 left-4 z-30 flex max-h-[calc(100vh-2rem)] w-[40rem] max-w-[calc(100vw-2rem-3.125rem)] flex-col gap-2"
     >
       <motion.div
         layout
@@ -466,7 +478,7 @@ export function CommandPalette() {
         // (the input row's own top inset).
         data-map-inset={expanded ? "left" : undefined}
         className={[
-          "bx-surface-strong flex flex-col overflow-hidden rounded-xl text-fg",
+          "bx-surface-strong pointer-events-auto flex flex-col overflow-hidden rounded-xl text-fg",
           expanded ? "max-h-[min(32rem,calc(100vh-2rem))] shadow-2xl" : "shadow-lg",
         ].join(" ")}
       >
@@ -625,10 +637,19 @@ export function CommandPalette() {
           {expanded && (
             <motion.div
               key="panel"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
+              initial={PANEL_SHUT}
+              animate={PANEL_OPEN}
+              exit={PANEL_SHUT}
               transition={{ duration: 0.18 }}
+              // Camera fits wait while it opens or shrinks (afterInsetsSettle).
+              // After the shrink the mark stays until the panel leaves the
+              // page: it still covers the map for a frame or two after its
+              // animation ends.
+              onAnimationStart={() => panelRef.current?.setAttribute("data-map-moving", "")}
+              onAnimationComplete={(done) => {
+                if (done !== PANEL_SHUT) panelRef.current?.removeAttribute("data-map-moving")
+              }}
+              ref={panelRef}
               className="flex min-h-0 flex-1 flex-col border-t border-border-default"
             >
               {view === "query" ? (
@@ -753,8 +774,8 @@ export function CommandPalette() {
                 </>
               )}
 
-              {/* Key hints */}
-              <div className="flex shrink-0 items-center gap-3 border-t border-border-default px-3 py-1.5 text-[10px] text-fg-faint">
+              {/* Key hints: those that do not fit move to a second line. */}
+              <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border-default px-3 py-1.5 text-[10px] text-fg-faint">
                 {formView ? (
                   <>
                     {view === "query" && (
@@ -837,6 +858,7 @@ export function CommandPalette() {
         </AnimatePresence>
       </motion.div>
 
+      <LegendStrip />
     </div>
   )
 }

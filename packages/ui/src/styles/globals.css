@@ -162,3 +162,37 @@ body {
 [data-theme="dark"] .maplibregl-ctrl-attrib-button {
     filter: invert(1);
 }
+/* Long credits wrap before they reach the map buttons in the bottom-right
+   corner (MapOverlay: right-2 plus 34px wide). With the credits' own 10px
+   margin that leaves a 10px gap. 100% is the map's width. */
+.maplibregl-map .maplibregl-ctrl-bottom-left {
+    max-width: calc(100% - 42px);
+}
+
+/* The GitHub link in the top-right corner: a rounded square with a soft halo
+   in the accent, so it stands out a little from the map without looking
+   like one of the panels. 42px square with the bar's 12px corners: the
+   palette bar's height (a 40px row inside a 1px border), so the two sit
+   level. The halo grows a touch on hover. */
+.bx-halo-link {
+    align-items: center;
+    justify-content: center;
+    width: 2.625rem;
+    height: 2.625rem;
+    border-radius: var(--bx-radius-xl);
+    background-color: color-mix(in srgb, var(--bx-surface-raised) 96%, transparent);
+    border: 1px solid color-mix(in srgb, var(--bx-accent) 45%, var(--bx-border-strong));
+    color: var(--bx-fg);
+    box-shadow:
+        0 0 0 3px color-mix(in srgb, var(--bx-accent) 18%, transparent),
+        0 0 16px 2px color-mix(in srgb, var(--bx-accent) 28%, transparent),
+        0 6px 16px color-mix(in srgb, var(--bx-scrim) 30%, transparent);
+    transition: box-shadow 150ms ease, color 150ms ease;
+}
+.bx-halo-link:hover {
+    color: var(--bx-accent);
+    box-shadow:
+        0 0 0 4px color-mix(in srgb, var(--bx-accent) 26%, transparent),
+        0 0 22px 4px color-mix(in srgb, var(--bx-accent) 38%, transparent),
+        0 6px 16px color-mix(in srgb, var(--bx-scrim) 30%, transparent);
+}

@@ -1,7 +1,7 @@
 import { useEffect } from "react"
 import type * as maplibregl from "maplibre-gl"
 import { useMap } from "./MapProvider"
-import { mapInsets } from "./insets"
+import { afterInsetsSettle, mapInsets } from "./insets"
 import { resolveColor } from "./color"
 import { useChatStore, visibleScenes } from "@/features/chat/store"
 import type { Scene } from "@/features/chat/types"
@@ -191,15 +191,18 @@ export function useSceneLayer() {
 
   // Only on request (Zoom to scene, or the scene card appearing under a shrunk
   // palette), never on selection alone, so browsing the strip does not move
-  // the camera. Padding is measured at call time, so it fits the space the
-  // floating UI leaves free right now.
+  // the camera. Padding is measured once the floating UI has come to rest, so
+  // it fits the space the UI leaves free.
   const zoomRequest = useChatStore((s) => s.zoomRequest)
   useEffect(() => {
     if (!map || zoomRequest === 0 || !selectedSceneId) return
     const one = scenes.find((s) => s.id === selectedSceneId)
     if (!one?.footprint) return
     const bounds = boundsOf(scenesToFeatures([one], {}))
-    if (bounds) map.fitBounds(bounds, { padding: mapInsets(map.getContainer()), maxZoom: 12, duration: 600 })
+    if (!bounds) return
+    return afterInsetsSettle(() =>
+      map.fitBounds(bounds, { padding: mapInsets(map.getContainer()), maxZoom: 12, duration: 600 }),
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoomRequest])
 }

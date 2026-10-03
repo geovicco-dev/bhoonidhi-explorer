@@ -39,3 +39,37 @@ export function mapInsets(container: HTMLElement): Insets {
   ;[pad.left, pad.right] = shrink(pad.left, pad.right, box.width)
   return pad
 }
+
+// Runs `run` once the floating UI has come to rest: no element marked
+// data-map-moving (a panel mid-animation marks itself), and every inset
+// element's rect unchanged for STILL_FRAMES frames in a row; or after `maxMs`
+// whatever the state. A fit started while a panel moves would measure it
+// mid-way: the legend strip rides under the shrinking palette, and the
+// palette shrinks just as a scene card appears or an area command flies.
+// Returns a cancel function.
+const STILL_FRAMES = 2
+
+export function afterInsetsSettle(run: () => void, maxMs = 1000): () => void {
+  const start = performance.now()
+  let last = ""
+  let still = 0
+  let id = 0
+  const tick = () => {
+    const now = [...document.querySelectorAll<HTMLElement>("[data-map-inset]")]
+      .map((el) => {
+        const r = el.getBoundingClientRect()
+        return `${el.dataset.mapInset}:${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`
+      })
+      .join("|")
+    const moving = document.querySelector("[data-map-moving]") !== null
+    still = now === last && !moving ? still + 1 : 0
+    last = now
+    if (still >= STILL_FRAMES || performance.now() - start > maxMs) {
+      run()
+      return
+    }
+    id = window.requestAnimationFrame(tick)
+  }
+  id = window.requestAnimationFrame(tick)
+  return () => window.cancelAnimationFrame(id)
+}

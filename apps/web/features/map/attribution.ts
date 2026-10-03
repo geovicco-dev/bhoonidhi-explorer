@@ -36,12 +36,18 @@ export function imageryCredits(scenes: { collection?: string; year: number | nul
 // change with the basemap. This one uses MapLibre's classes and its compact
 // behaviour: open on load, collapsed to the "i" button on the first pan (as
 // OpenStreetMap's attribution guidelines allow), and the "i" toggles it.
+// Below 1024px it also folds by itself five seconds after the map loads,
+// which the same guidelines allow; a press on the "i" before then cancels it.
+const FOLD_BY_ITSELF = "(max-width: 1023.98px)"
+const FOLD_AFTER_MS = 5000
+
 export class AttributionControl implements maplibregl.IControl {
   private map: maplibregl.Map | null = null
   private readonly container = document.createElement("div")
   private readonly inner = document.createElement("div")
   private html = ""
   private imagery: string[] = []
+  private foldTimer: number | undefined
 
   // The foreign providers' credits; plain text, so escaped before use.
   setImagery(credits: string[]) {
@@ -53,6 +59,8 @@ export class AttributionControl implements maplibregl.IControl {
     this.map = map
     this.container.className =
       "maplibregl-ctrl maplibregl-ctrl-attrib maplibregl-compact maplibregl-compact-show"
+    // The selected-scene card keeps clear of it (SelectedSceneCard).
+    this.container.dataset.bottomChrome = ""
     const button = document.createElement("button")
     button.type = "button"
     button.className = "maplibregl-ctrl-attrib-button"
@@ -64,20 +72,36 @@ export class AttributionControl implements maplibregl.IControl {
     map.on("styledata", this.update)
     map.on("sourcedata", this.onSourceData)
     map.on("drag", this.collapse)
+    // From the load, when the basemap's credits are in, so they show for the
+    // full five seconds.
+    map.once("load", this.startFoldTimer)
     this.update()
     return this.container
   }
 
   onRemove() {
+    window.clearTimeout(this.foldTimer)
     this.map?.off("styledata", this.update)
     this.map?.off("sourcedata", this.onSourceData)
     this.map?.off("drag", this.collapse)
+    this.map?.off("load", this.startFoldTimer)
     this.container.remove()
     this.map = null
   }
 
-  private readonly toggle = () => this.container.classList.toggle("maplibregl-compact-show")
+  // A press on the "i" is the visitor's choice: no fold by itself after it,
+  // also when it comes before the map has loaded and the timer started.
+  private readonly toggle = () => {
+    window.clearTimeout(this.foldTimer)
+    this.map?.off("load", this.startFoldTimer)
+    this.container.classList.toggle("maplibregl-compact-show")
+  }
   private readonly collapse = () => this.container.classList.remove("maplibregl-compact-show")
+  private readonly startFoldTimer = () => {
+    this.foldTimer = window.setTimeout(() => {
+      if (window.matchMedia(FOLD_BY_ITSELF).matches) this.collapse()
+    }, FOLD_AFTER_MS)
+  }
 
   // A source's credit arrives with its metadata; tile loads change nothing.
   private readonly onSourceData = (e: maplibregl.MapSourceDataEvent) => {

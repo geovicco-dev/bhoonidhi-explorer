@@ -43,6 +43,14 @@ import type { Aoi, AoiBox, AoiCircle, AoiColor } from "./types"
 const TOP_CLEAR = 64
 const EDGE = 8
 
+// Below 1024px the legend strip sits under the palette; the card stays below
+// it too. Hidden on wider screens, where it measures 0.
+function topClear(root: HTMLElement): number {
+  const strip = document.querySelector<HTMLElement>("[data-legend-strip]")?.getBoundingClientRect()
+  if (!strip?.height) return TOP_CLEAR
+  return Math.max(TOP_CLEAR, strip.bottom - root.getBoundingClientRect().top + EDGE)
+}
+
 function place(map: maplibregl.Map, root: HTMLElement, shape: Aoi, gap: number) {
   const width = root.clientWidth
   const height = root.clientHeight
@@ -61,7 +69,7 @@ function place(map: maplibregl.Map, root: HTMLElement, shape: Aoi, gap: number) 
     // Below the shape, so a fitted area never pushes its card into the palette bar.
     const bottom = map.project(aoiTopBottom(shape).bottom)
     const x = clamp(bottom.x - card.offsetWidth / 2, EDGE, width - card.offsetWidth - EDGE)
-    const y = clamp(bottom.y + gap, TOP_CLEAR, height - card.offsetHeight - EDGE)
+    const y = clamp(bottom.y + gap, topClear(root), height - card.offsetHeight - EDGE)
     card.style.transform = `translate(${x}px, ${y}px)`
   }
 }
