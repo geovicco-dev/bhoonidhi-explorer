@@ -462,10 +462,11 @@ export function CommandPalette() {
     // The shell itself takes no pointer events: below 1024px it also holds the
     // legend strip, and the map beside the strip must still pan. Its height is
     // capped so the strip stays on screen under an open panel; the panel
-    // shrinks instead.
+    // shrinks instead. Its width leaves 3.125rem at the right on narrow
+    // screens: the GitHub link (2.625rem) and an 8px gap, on the same row.
     <div
       ref={shellRef}
-      className="pointer-events-none absolute top-4 left-4 z-30 flex max-h-[calc(100vh-2rem)] w-[40rem] max-w-[calc(100vw-2rem)] flex-col gap-2"
+      className="pointer-events-none absolute top-4 left-4 z-30 flex max-h-[calc(100vh-2rem)] w-[40rem] max-w-[calc(100vw-2rem-3.125rem)] flex-col gap-2"
     >
       <motion.div
         layout

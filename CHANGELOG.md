@@ -8,6 +8,9 @@
   API in a new tab. `STAC_PUBLIC_URL` names the STAC API's address for
   visitors' browsers when `STAC_API_URL` is one only the explorer reaches;
   empty, the link uses `STAC_API_URL`.
+- A GitHub button in the top-right corner of the map, level with the
+  palette bar, opens the explorer's source code on GitHub in a new tab. On
+  narrow screens the palette bar leaves room for it on the same row.
 
 ### Changed
 
