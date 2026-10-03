@@ -94,7 +94,11 @@ def test_a_satellite_with_no_scenes_in_the_dates_is_left_out():
     ]
 
 
-def test_dates_stop_at_today():
-    this_year = date.today().year
-    q = ask(f"Sentinel-2 in {this_year}")
-    assert q["dates"]["to"] == min(date(this_year, 12, 31), date.today()).isoformat()
+def test_dates_stop_at_today(monkeypatch):
+    # The date in India, as the agent's own prompt uses it: just after
+    # midnight there, the UTC date is still the day before.
+    monkeypatch.setattr(query.tools, "today", lambda: date(2026, 10, 2))
+    q = ask("Sentinel-2 in 2026")
+    assert q["dates"] == {"from": "2026-01-01", "to": "2026-10-02", "yearly": False}
+    # A year already over keeps its whole span.
+    assert ask("Sentinel-2 in 2025")["dates"]["to"] == "2025-12-31"

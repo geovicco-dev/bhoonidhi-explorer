@@ -40,6 +40,10 @@
   label sits above its field, so the form no longer scrolls sideways and
   its rows keep their right margin. The palette's key hints move to a
   second line when they do not fit.
+- A question that names this year ("Sentinel-2 in 2026") and is turned
+  into a query in the form ends its dates on today's date in India, as the
+  model's own searches do. For the first 5½ hours after midnight in India
+  it ended them on the day before.
 
 ### Security
 

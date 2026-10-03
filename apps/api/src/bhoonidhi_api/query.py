@@ -500,7 +500,7 @@ def from_question(
         items = _items(resolved, cat)
         if items:
             out["items"] = items
-    dates = _dates_in(text, datetime.now(UTC).date())
+    dates = _dates_in(text, tools.today())
     if dates:
         out["dates"] = dates
     if _READY.search(text):
