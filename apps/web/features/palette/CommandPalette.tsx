@@ -478,7 +478,7 @@ export function CommandPalette() {
         // (the input row's own top inset).
         data-map-inset={expanded ? "left" : undefined}
         className={[
-          "bx-surface-strong pointer-events-auto flex flex-col overflow-hidden rounded-xl text-fg",
+          "bx-surface-strong bx-halo-soft pointer-events-auto flex flex-col overflow-hidden rounded-xl text-fg",
           expanded ? "max-h-[min(32rem,calc(100vh-2rem))] shadow-2xl" : "shadow-lg",
         ].join(" ")}
       >

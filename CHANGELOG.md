@@ -16,6 +16,8 @@
 
 - The scene card's "Zoom to scene" button reads "Zoom", with the full name
   in its tooltip, so the four buttons fit on one line.
+- The command palette has a dim halo in the accent, the GitHub button's
+  halo at about half strength, so the two match along the top of the map.
 - The CLI and MCP copy buttons are offered only for Ready scenes. On the
   scene card they are disabled for an Archived, On order or Priced scene,
   and their tooltip says how to get it from the Bhoonidhi portal. For
