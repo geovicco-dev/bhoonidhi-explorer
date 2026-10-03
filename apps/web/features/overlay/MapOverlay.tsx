@@ -9,6 +9,7 @@ import { AvailabilityLegend } from "@/features/scene/AvailabilityLegend"
 import { CommandPalette } from "@/features/palette/CommandPalette"
 import { SelectedSceneCard } from "@/features/scene/SelectedSceneCard"
 import { useQueryShortcut } from "@/features/query/open"
+import { GitHubLink } from "./GitHubLink"
 
 // Chrome floating over the map canvas. The palette at the top left is the one
 // control surface (questions, conversation, scenes, commands); the legend and
@@ -24,7 +25,13 @@ export function MapOverlay() {
             <AoiOverlay />
             <CommandPalette />
             <SelectedSceneCard />
-            <AvailabilityLegend />
+
+            {/* Top right: the legend (once scenes exist), then the GitHub link
+                in the corner. */}
+            <div className="pointer-events-none absolute right-4 top-4 z-20 flex items-start gap-3">
+                <AvailabilityLegend />
+                <GitHubLink />
+            </div>
 
             <div data-bottom-chrome className="pointer-events-auto absolute bottom-2 right-2">
                 <Toolbar orientation="vertical">

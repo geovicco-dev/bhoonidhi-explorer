@@ -6,7 +6,8 @@ import { IconChevronDown, IconChevronUp } from "@tabler/icons-react"
 import { useChatStore } from "@/features/chat/store"
 import { AVAILABILITY, AVAILABILITY_ORDER } from "./availability"
 
-// Availability legend panel, top-right. Starts open once scenes exist; colours
+// Availability legend panel, top-right, beside the GitHub link (MapOverlay
+// places both). Starts open once scenes exist; colours
 // come from the same table as the footprints. Below 1024px it gives way to
 // LegendStrip under the palette bar, which a phone's palette would cover.
 export function AvailabilityLegend() {
@@ -16,7 +17,7 @@ export function AvailabilityLegend() {
   if (!hasScenes) return null
 
   return (
-    <div data-map-inset="top" className="pointer-events-auto absolute right-4 top-4 z-20 hidden lg:block">
+    <div data-map-inset="top" className="pointer-events-auto hidden lg:block">
       <div className="bx-surface-strong overflow-hidden rounded-xl shadow-lg">
         <button
           type="button"
