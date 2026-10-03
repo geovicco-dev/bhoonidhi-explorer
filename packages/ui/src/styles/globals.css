@@ -196,3 +196,15 @@ body {
         0 0 22px 4px color-mix(in srgb, var(--bx-accent) 38%, transparent),
         0 6px 16px color-mix(in srgb, var(--bx-scrim) 30%, transparent);
 }
+
+/* The command palette wears the GitHub link's halo, dimmer: the same accent
+   ring and glow at about half strength, over the palette's own depth shadow
+   (.bx-surface-strong's), so the two read as a pair along the top of the
+   map. Two classes, so it wins over .bx-surface-strong whatever the order. */
+.bx-surface-strong.bx-halo-soft {
+    border-color: color-mix(in srgb, var(--bx-accent) 25%, var(--bx-border-strong));
+    box-shadow:
+        0 0 0 3px color-mix(in srgb, var(--bx-accent) 9%, transparent),
+        0 0 16px 2px color-mix(in srgb, var(--bx-accent) 14%, transparent),
+        0 24px 56px color-mix(in srgb, var(--bx-scrim) 55%, transparent);
+}
