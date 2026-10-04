@@ -180,7 +180,7 @@ async def catalogue() -> list[names.Collection]:
             # A collection with no items borrows the name its siblings use.
             satellite=satellite,
             sensor=sensor,
-            gsd_m=(s.get("gsd") or [None])[0],
+            gsd_m=min(s.get("gsd") or [], default=None),
             start=(interval[0] or "")[:10] or None,
             end=(interval[1] or "")[:10] or None,
             products=from_archive.get(f"{satellite}_{sensor}") or tuple(sels),
@@ -533,6 +533,21 @@ async def run_search(
     start, end = windows[0][0], max(e for _, e in windows)
     filtered = collections is not None
 
+    # A collection's record lists every resolution its scenes have, so one
+    # coarser than the limit throughout cannot match and is left out of the
+    # search. The STAC API would otherwise read each of its scenes to find
+    # none: with no satellite named, "finer than 5 m" took 76 s on the live
+    # STAC API, past its 60-second limit. The gsd filter below stays for the
+    # collections that hold several resolutions.
+    asked = collections if collections is not None else cat
+    coarser = [
+        c for c in asked
+        if max_resolution_m is not None and c.gsd_m is not None and c.gsd_m > max_resolution_m
+    ]
+    searched = [c for c in asked if c not in coarser]
+    # True only when the limit itself left nothing to search.
+    nothing_can_match = bool(coarser) and not searched
+
     body: dict[str, Any] = {
         **(area or {}),
         "datetime": f"{start.isoformat()}T00:00:00Z/{end.isoformat()}T23:59:59Z",
@@ -541,7 +556,7 @@ async def run_search(
         "fields": _FIELDS,
     }
     # With no satellite named, every collection loaded at start.
-    body["collections"] = [c.id for c in (collections if collections is not None else cat)]
+    body["collections"] = [c.id for c in searched]
 
     # Everything the catalogue can narrow server-side, as one CQL2 filter.
     clauses: list[dict[str, Any]] = []
@@ -566,16 +581,21 @@ async def run_search(
         body["filter-lang"] = "cql2-json"
         body["filter"] = clauses[0] if len(clauses) == 1 else {"op": "and", "args": clauses}
 
-    try:
-        data = await _stac("POST", "/search", json=body)
-    except httpx.HTTPError as exc:
-        return {"status": "error", "error": f"STAC API search failed: {exc}"}
+    if nothing_can_match:
+        # Every collection is coarser than the limit: nothing can match, and
+        # an empty collection list would make the STAC API search them all.
+        data: dict[str, Any] = {"features": [], "links": []}
+    else:
+        try:
+            data = await _stac("POST", "/search", json=body)
+        except httpx.HTTPError as exc:
+            return {"status": "error", "error": f"STAC API search failed: {exc}"}
 
     # Asking for whole-area cover and getting nothing usually means no single
     # scene is that big, not that there is no imagery. Say so with the number
     # that do overlap, so the answer is never a bare empty result.
     overlapping: int | None = None
-    if want_cover and not data.get("features"):
+    if want_cover and not nothing_can_match and not data.get("features"):
         loose = {k: v for k, v in body.items() if k != "filter"}
         rest = [c for c in clauses if c.get("op") != "s_contains"]
         if rest:
@@ -638,7 +658,7 @@ async def run_search(
         result["note"] += f" Only the newest {len(scenes):,} are shown; narrow the dates or area to see older ones."
     else:
         result["total"] = len(scenes)
-    if want_cover and not scenes:
+    if want_cover and not nothing_can_match and not scenes:
         result["status"] = "none_cover_the_area"
         result["note"] = (
             "No single scene covers the whole area. "
@@ -650,6 +670,16 @@ async def run_search(
     if scenes:
         result["newest"] = scenes[0]["date_of_pass"]
         result["oldest"] = scenes[-1]["date_of_pass"]
+    elif nothing_can_match:
+        finest = min(c.gsd_m for c in coarser if c.gsd_m is not None)
+        result.update({
+            "why_empty": (
+                [f"{c.satellite} {c.sensor} is {c.gsd_m:g} m at its finest" for c in coarser]
+                if filtered
+                else [f"no satellite in the STAC API is finer than {max_resolution_m:g} m; the finest is {finest:g} m"]
+            ),
+            "hint": "Say this reason in the answer; do not report an empty result on its own.",
+        })
     elif (why := _nothing_found(reasons_from if reasons_from is not None else collections or cat, windows)) is not None:
         result.update(why)
     return result

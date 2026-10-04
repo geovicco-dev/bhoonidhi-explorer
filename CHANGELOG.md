@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- A question or query with a resolution limit and no satellite named, such
+  as "finer than 5 m" anywhere since 2000, answers in under a second
+  instead of failing after a minute. The search now leaves out every
+  satellite whose finest resolution is coarser than the limit, as the
+  query form's "left out" note already said.
+
 ## [0.2.0] - 2026-10-03
 
 ### Added
