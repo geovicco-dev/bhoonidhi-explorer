@@ -346,6 +346,50 @@ def test_filters_combine_in_one_query(fake_stac):
     assert [c["op"] for c in f["args"]] == ["<=", "in", "=", "s_contains"]
 
 
+def test_a_limit_with_no_satellite_named_leaves_out_the_coarser_collections(fake_stac):
+    """The STAC API would read every scene of a coarser collection to find
+    none, so they are not sent; the gsd filter stays for the rest."""
+    out = asyncio.run(tools.search_catalog("2024-01-01", "2024-01-31", 1, 1, 2, 2, max_resolution_m=6))
+    body = fake_stac[0]
+    assert body["collections"] == ["resourcesat-2-liss4-mx23", "resourcesat-2a-liss4-mx23"]
+    assert body["filter"] == {"op": "<=", "args": [{"property": "gsd"}, 6]}
+    assert out["searched"]["satellites"] == "all"
+
+
+def test_a_limit_equal_to_a_collections_resolution_keeps_it(fake_stac):
+    asyncio.run(tools.search_catalog("2024-01-01", "2024-01-31", 1, 1, 2, 2, max_resolution_m=10))
+    assert fake_stac[0]["collections"] == [
+        "sentinel-2b-msi", "resourcesat-2-liss4-mx23", "resourcesat-2a-liss4-mx23", "sentinel-1b-sar-iw",
+    ]
+
+
+def test_a_collection_with_two_resolutions_stays_when_its_finest_passes(fake_stac, monkeypatch):
+    """AWiFS lists 100 m before 56 m here: its finest decides, not its first."""
+    monkeypatch.setitem(COLLECTIONS, "collections", [
+        {**c, "summaries": {**c["summaries"], "gsd": [100.0, 56.0]}} if c["id"] == "resourcesat-2a-awifs" else c
+        for c in COLLECTIONS["collections"]
+    ])
+    asyncio.run(tools.search_catalog("2024-01-01", "2024-01-31", 1, 1, 2, 2, max_resolution_m=60))
+    assert "resourcesat-2a-awifs" in fake_stac[0]["collections"]
+
+
+def test_a_named_satellite_coarser_than_the_limit_is_not_searched(fake_stac):
+    """Nothing can match, so no request is made (not even the whole-area
+    retry), and the answer says why."""
+    out = asyncio.run(tools.search_catalog(
+        "2024-01-01", "2024-01-31", 1, 1, 2, 2, satellite="ResourceSat-2A", sensor="AWIFS",
+        max_resolution_m=10, covers_area=True))
+    assert fake_stac == []
+    assert out["status"] == "ok" and out["count"] == 0
+    assert out["why_empty"] == ["ResourceSat-2A AWIFS is 56 m at its finest"]
+
+
+def test_a_limit_finer_than_every_satellite_is_not_searched(fake_stac):
+    out = asyncio.run(tools.search_catalog("2024-01-01", "2024-01-31", 1, 1, 2, 2, max_resolution_m=0.5))
+    assert fake_stac == []
+    assert out["why_empty"] == ["no satellite in the STAC API is finer than 0.5 m; the finest is 5.8 m"]
+
+
 def test_one_date_window_needs_no_filter(fake_stac):
     """The ordinary case: the search's own datetime range says it all."""
     out = asyncio.run(tools.search_catalog("2024-01-01", "2024-01-31", 1, 1, 2, 2))

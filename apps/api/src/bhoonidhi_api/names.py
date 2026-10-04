@@ -33,6 +33,7 @@ class Collection:
     # "LISS4(MX23)".
     satellite: str
     sensor: str
+    # The finest resolution the STAC API's collection record lists, in metres.
     gsd_m: float | None = None
     start: str | None = None
     end: str | None = None
