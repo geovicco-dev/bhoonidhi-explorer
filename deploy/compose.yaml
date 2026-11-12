@@ -18,9 +18,25 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:?set OPENAI_BASE_URL in .env}
+      # The model: MODEL_PROVIDER answers, MODEL_FALLBACK takes over when it
+      # fails. The server refuses to start when the chosen ones lack a
+      # model, address or key, and says which.
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-openai}
+      MODEL_FALLBACK: ${MODEL_FALLBACK:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:?set OPENAI_MODEL in .env}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-5-5}
+      ANTHROPIC_EFFORT: ${ANTHROPIC_EFFORT:-}
+      ANTHROPIC_THINKING: ${ANTHROPIC_THINKING:-}
+      ANTHROPIC_MAX_TOKENS: ${ANTHROPIC_MAX_TOKENS:-4096}
+      ANTHROPIC_CACHE_TTL: ${ANTHROPIC_CACHE_TTL:-5m}
+      MODEL_FALLBACK_COOLDOWN_S: ${MODEL_FALLBACK_COOLDOWN_S:-300}
+      MODEL_FIRST_TOKEN_TIMEOUT_S: ${MODEL_FIRST_TOKEN_TIMEOUT_S:-20}
+      MODEL_BUDGET_DAILY_USD: ${MODEL_BUDGET_DAILY_USD:-0}
+      MODEL_BUDGET_MONTHLY_USD: ${MODEL_BUDGET_MONTHLY_USD:-0}
+      MODEL_HISTORY_TURNS: ${MODEL_HISTORY_TURNS:-0}
       STAC_API_URL: ${STAC_API_URL:-https://bhoonidhi-stac.ecotrakr.in}
       STAC_PUBLIC_URL: ${STAC_PUBLIC_URL:-}
       GEOCODER_URL: ${GEOCODER_URL:-https://nominatim.openstreetmap.org}

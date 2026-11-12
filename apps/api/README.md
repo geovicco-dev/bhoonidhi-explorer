@@ -60,8 +60,9 @@ search the live portal, so they can also find scenes newer than the STAC API has
 ## Prerequisites
 
 - **[uv](https://docs.astral.sh/uv/)** and Python ≥ 3.12.
-- **A model server** that speaks the OpenAI API and supports tool calling
-  (LM Studio, Ollama, llama.cpp, vLLM or OpenAI).
+- **A model** that supports tool calling: a server that speaks the OpenAI
+  API (LM Studio, Ollama, llama.cpp, vLLM or OpenAI), or an Anthropic API
+  key for Claude.
 - **`bhoonidhi-downloader`**, installed from PyPI at the version
   `pyproject.toml` pins. The API uses its `Availability` labels, so they
   match what `bhd` prints, and its reader for the `bhd archive` cache.
@@ -80,9 +81,14 @@ cp .env.example .env      # the model, the STAC API, place search
 
 | Variable          | Meaning                                                | Default                    |
 | ----------------- | ------------------------------------------------------ | -------------------------- |
+| `MODEL_PROVIDER`  | Which model answers: `openai` (the `OPENAI_*` settings) or `anthropic` (Claude, the `ANTHROPIC_*` settings) | `openai` |
+| `MODEL_FALLBACK`  | The other provider, which answers when `MODEL_PROVIDER` fails (`models.py`, `Router`); empty for none | _(empty)_ |
 | `OPENAI_BASE_URL` | Any OpenAI-compatible server's base URL                | `http://localhost:1234/v1` |
 | `OPENAI_API_KEY`  | Its key (**secret**, never commit); local servers usually need none | _(empty)_ |
 | `OPENAI_MODEL`    | Model id                                               | `openai/gpt-oss-20b`       |
+| `ANTHROPIC_API_KEY` | Anthropic API key (**secret**, never commit)         | _(empty)_ |
+| `ANTHROPIC_MODEL`, `ANTHROPIC_EFFORT`, `ANTHROPIC_THINKING` | Claude model id, effort per step and thinking; empty effort and thinking use the model's defaults | `claude-haiku-5-5`, _(empty)_, _(empty)_ |
+| `MODEL_BUDGET_DAILY_USD`, `MODEL_BUDGET_MONTHLY_USD` | Spend ceilings per UTC day and month (`usage.py`, counted in `sessions.db`); `0` is none | `0`, `0` |
 | `MODEL_SLOTS`, `MODEL_QUEUE_MAX`, `MODEL_QUEUE_WAIT_S` | The line for the model (`model_queue.py`): questions answered at once (match LM Studio's `parallel`), questions allowed to wait, the longest wait in seconds | `4`, `20`, `180` |
 | `FRONTEND_ORIGIN` | Allowed CORS origin (the Next.js dev server)           | `http://localhost:3000`    |
 | `STAC_API_URL`    | STAC API base URL; the only scene source. `.env.example` sets the public Bhoonidhi STAC API | _(empty)_ |

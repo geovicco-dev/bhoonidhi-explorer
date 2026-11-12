@@ -40,6 +40,12 @@ CREATE TABLE IF NOT EXISTS turns (
     created_at      REAL NOT NULL,
     PRIMARY KEY (conversation_id, idx)
 );
+
+-- What the model cost per UTC day (YYYY-MM-DD), for the app's own budgets.
+CREATE TABLE IF NOT EXISTS model_spend (
+    day TEXT PRIMARY KEY,
+    usd REAL NOT NULL DEFAULT 0
+);
 """
 
 TITLE_MAX = 60
@@ -246,3 +252,26 @@ def save_turn(
         if idx == 0 and not row["title"]:
             conn.execute("UPDATE conversations SET title = ? WHERE id = ?", (title_from(prompt), cid))
         conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, cid))
+
+
+# --- model spend, for the budgets ------------------------------------------
+
+
+def add_spend(day: str, usd: float) -> None:
+    """Adds to one UTC day's model spend (day as YYYY-MM-DD)."""
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO model_spend (day, usd) VALUES (?, ?)"
+            " ON CONFLICT (day) DO UPDATE SET usd = usd + excluded.usd",
+            (day, usd),
+        )
+
+
+def spend(day: str) -> tuple[float, float]:
+    """(that day's spend, that day's calendar month's spend so far)."""
+    with _connect() as conn:
+        today = conn.execute("SELECT usd FROM model_spend WHERE day = ?", (day,)).fetchone()
+        month = conn.execute(
+            "SELECT COALESCE(SUM(usd), 0) FROM model_spend WHERE substr(day, 1, 7) = ?", (day[:7],)
+        ).fetchone()
+    return (today[0] if today else 0.0), month[0]

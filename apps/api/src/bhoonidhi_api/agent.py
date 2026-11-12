@@ -7,14 +7,15 @@ messages this turn produced, so the next turn can replay them as memory.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections.abc import AsyncIterator
 from typing import Any
 
-from openai import AsyncOpenAI
-
-from . import tools
+from . import models, tools
 from .config import settings
+
+log = logging.getLogger("bhoonidhi_api")
 
 _BASE_PROMPT = (
     "You are the search agent for Bhoonidhi, ISRO's Earth-observation archive. "
@@ -98,9 +99,11 @@ def area_note(area: dict[str, Any] | None) -> str:
 
 MAX_TURNS = 6  # tool-call rounds before forcing a final answer
 
-# Tool results replayed as memory are cut to this size; a full scene list is
-# large and the model only needs the gist of earlier searches.
-MEMORY_RESULT_CHARS = 4000
+# What a visitor sees when no model can answer; the reason goes to the log.
+UNAVAILABLE = (
+    "The chat model is not available right now. Ask again in a few minutes, "
+    "or search with the query form, which does not need the model."
+)
 
 
 async def _call(impls: dict[str, tools.Tool], name: str, args: dict[str, Any]) -> Any:
@@ -133,44 +136,40 @@ def parse_arguments(raw: str) -> dict[str, Any] | None:
     return None
 
 
-async def _complete(client: AsyncOpenAI, messages: list[dict], specs: list[dict]) -> tuple[str, list[dict]]:
-    """One model step, streamed. Streaming matters: some servers (LM Studio
-    among them) silently drop a tool call whose arguments are not valid JSON
-    from a non-streamed reply, which looks like an empty answer. Returns (text, tool calls as raw dicts)."""
-    stream = await client.chat.completions.create(
-        model=settings.openai_model,
-        messages=messages,
-        tools=specs,
-        tool_choice="auto",
-        temperature=0,
-        stream=True,
-    )
-    text: list[str] = []
-    calls: dict[int, dict] = {}
-    async for chunk in stream:
-        if not chunk.choices:
-            continue
-        delta = chunk.choices[0].delta
-        if delta.content:
-            text.append(delta.content)
-        for tc in delta.tool_calls or []:
-            call = calls.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
-            if tc.id:
-                call["id"] = tc.id
-            if tc.function and tc.function.name:
-                call["name"] += tc.function.name
-            if tc.function and tc.function.arguments:
-                call["arguments"] += tc.function.arguments
-    ordered = [calls[i] for i in sorted(calls)]
-    for n, call in enumerate(ordered):
-        call["id"] = call["id"] or f"call_{n}"
-    return "".join(text), ordered
-
-
 def _for_memory(content: str) -> str:
-    if len(content) <= MEMORY_RESULT_CHARS:
+    # Tool results replayed as memory are cut (MODEL_MEMORY_RESULT_CHARS); a
+    # full scene list is large and the model only needs the gist of earlier searches.
+    limit = settings.model_memory_result_chars
+    if len(content) <= limit:
         return content
-    return content[:MEMORY_RESULT_CHARS] + " …[truncated]"
+    return content[:limit] + " …[truncated]"
+
+
+def recent_history(history: list[dict[str, Any]], whole_turns: int) -> list[dict[str, Any]]:
+    """Earlier turns as the model is sent them: the last `whole_turns` turns in
+    full, older ones as just the question and the final answer, without their
+    tool calls and results. 0 keeps every turn whole."""
+    turns: list[list[dict[str, Any]]] = []
+    for m in history:
+        if m.get("role") == "user" or not turns:
+            turns.append([])
+        turns[-1].append(m)
+    if whole_turns <= 0 or len(turns) <= whole_turns:
+        return history
+    out: list[dict[str, Any]] = []
+    for turn in turns[:-whole_turns]:
+        question = [m for m in turn if m.get("role") == "user"]
+        answer = next((m for m in reversed(turn) if m.get("role") == "assistant" and not m.get("tool_calls")
+                       and (m.get("content") or "").strip()), None)
+        out.extend(question[:1])
+        if question and answer is not None:
+            out.append({"role": "assistant", "content": answer["content"]})
+        elif question:
+            # A turn that ended without an answer still needs the assistant's turn.
+            out.append({"role": "assistant", "content": "(no answer)"})
+    for turn in turns[-whole_turns:]:
+        out.extend(turn)
+    return out
 
 
 async def run_agent(
@@ -181,11 +180,31 @@ async def run_agent(
     """`history` is every earlier turn as model messages: user prompts,
     assistant replies with their tool calls, and the tool results. `area` is
     the area of interest on the map when this message was sent."""
-    client = AsyncOpenAI(base_url=settings.openai_base_url, api_key=settings.openai_api_key)
+    model = models.backend()
+    try:
+        async for event in _answer(model, user_message, history, area):
+            yield event
+    finally:
+        try:
+            if hasattr(model, "log_usage"):
+                model.log_usage()
+        except Exception:  # noqa: BLE001 - the usage line must never fail an answer
+            log.exception("could not log model usage")
+
+
+async def _answer(
+    model: models.Backend,
+    user_message: str,
+    history: list[dict[str, Any]] | None,
+    area: dict[str, Any] | None,
+) -> AsyncIterator[dict[str, Any]]:
     specs, impls = tools.registry()
-    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt(area)}]
-    messages.extend(history or [])
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt()}]
+    messages.extend(recent_history(history or [], settings.model_history_turns))
     messages.append({"role": "user", "content": user_message})
+    if area:
+        # Right after the question; each backend places it for its model.
+        messages.append({"role": "system", "content": area_note(area), models.AREA_KEY: True})
     produced_from = len(messages)
 
     def produced() -> list[dict[str, Any]]:
@@ -193,16 +212,20 @@ async def run_agent(
         for m in messages[produced_from:]:
             if m.get("role") == "tool":
                 m = {**m, "content": _for_memory(m.get("content", ""))}
-            out.append(m)
+            # The model's own blocks (Claude's thinking) only matter within this turn.
+            out.append({k: v for k, v in m.items() if k != models.BLOCKS_KEY})
         return out
 
     for _turn in range(MAX_TURNS):
         try:
-            text, tool_calls = await _complete(client, messages, specs)
-        except Exception as exc:  # noqa: BLE001 - network / model error
-            yield {"type": "error", "message": f"LLM request failed: {exc}"}
+            step = await model.step(messages, specs)
+        except Exception as exc:  # noqa: BLE001 - network / model error, logged by the router
+            if not isinstance(exc, models.ModelUnavailable):
+                log.exception("model step failed")
+            yield {"type": "error", "message": UNAVAILABLE}
             yield {"type": "turn_llm", "messages": produced()}
             return
+        text, tool_calls = step.text, step.tool_calls
 
         if not tool_calls:
             messages.append({"role": "assistant", "content": text})
@@ -211,24 +234,25 @@ async def run_agent(
             return
 
         parsed = [parse_arguments(tc["arguments"]) for tc in tool_calls]
-        messages.append(
-            {
-                "role": "assistant",
-                "content": text,
-                "tool_calls": [
-                    {
-                        "id": tc["id"],
-                        "type": "function",
-                        "function": {
-                            "name": tc["name"],
-                            # Store the repaired form so replayed memory is valid JSON.
-                            "arguments": json.dumps(args) if args is not None else tc["arguments"],
-                        },
-                    }
-                    for tc, args in zip(tool_calls, parsed, strict=True)
-                ],
-            }
-        )
+        assistant: dict[str, Any] = {
+            "role": "assistant",
+            "content": text,
+            "tool_calls": [
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tc["name"],
+                        # Store the repaired form so replayed memory is valid JSON.
+                        "arguments": json.dumps(args) if args is not None else tc["arguments"],
+                    },
+                }
+                for tc, args in zip(tool_calls, parsed, strict=True)
+            ],
+        }
+        if step.blocks:
+            assistant[models.BLOCKS_KEY] = step.blocks
+        messages.append(assistant)
 
         for tc, args in zip(tool_calls, parsed, strict=True):
             name = tc["name"]
@@ -254,16 +278,15 @@ async def run_agent(
 
     # Ran out of rounds; ask for a wrap-up without tools.
     try:
-        final = await client.chat.completions.create(
-            model=settings.openai_model,
-            messages=messages + [
-                {"role": "user", "content": "Summarize the results for me now, no more tools."}
-            ],
-            temperature=0,
+        step = await model.step(
+            messages + [{"role": "user", "content": "Summarize the results for me now, no more tools."}],
+            specs,
+            final=True,
         )
-        text = final.choices[0].message.content or ""
-        messages.append({"role": "assistant", "content": text})
-        yield {"type": "answer", "text": text}
+        messages.append({"role": "assistant", "content": step.text})
+        yield {"type": "answer", "text": step.text}
     except Exception as exc:  # noqa: BLE001
-        yield {"type": "error", "message": f"final summary failed: {exc}"}
+        if not isinstance(exc, models.ModelUnavailable):
+            log.exception("final summary failed")
+        yield {"type": "error", "message": UNAVAILABLE}
     yield {"type": "turn_llm", "messages": produced()}

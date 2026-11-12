@@ -2,12 +2,41 @@
 
 ## [Unreleased]
 
+### Added
+
+- The chat can answer with Claude through Anthropic's API
+  (`MODEL_PROVIDER=anthropic`). The model, how hard it works on each step,
+  whether it thinks first, how much one step may write and how long the
+  start of each request stays cached are settings (`ANTHROPIC_*`). Any
+  OpenAI-compatible server works as before and stays the default.
+- `MODEL_FALLBACK` names a second model that answers by itself when the
+  first one fails: no connection, overloaded, rate limited, out of credit,
+  a refused key, or a budget reached. A failure halfway through an answer
+  carries on with the fallback, and the visitor sees no error.
+- Spend ceilings per UTC day and calendar month (`MODEL_BUDGET_DAILY_USD`,
+  `MODEL_BUDGET_MONTHLY_USD`), counted from each answer's tokens and kept
+  across restarts. Past one, the fallback answers until the day or month
+  ends.
+- Each answer writes one `model_usage` log line with the model, its steps,
+  the tokens and the cost, and `/api/health` shows which model answers now
+  and why.
+- `MODEL_HISTORY_TURNS` sends only the last few turns of a long
+  conversation whole, and the older ones as just the question and the
+  answer. By default every turn is sent whole, as before.
+
 ### Changed
 
 - When a chat search finds more scenes than the 1,000 it shows, the agent
   is also told the date of the oldest matching scene, so a question such as
   "how far back do LISS-3 scenes over Punjab go" gets the archive's real
   start date.
+- When no model can answer, the chat shows one plain message pointing to
+  the query form, instead of the model server's error text.
+- `OPENAI_BASE_URL` and `OPENAI_MODEL` are needed only when an
+  OpenAI-compatible server answers. A setting the chosen model needs and
+  lacks stops the server at start with its name, where Compose stopped
+  before.
+
 ## [0.2.1] - 2026-10-05
 
 ### Fixed
