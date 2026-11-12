@@ -111,8 +111,8 @@ def stac_public_url() -> str | None:
     return url or None
 
 
-async def _stac(method: str, path: str, json: dict | None = None) -> dict[str, Any]:
-    async with httpx.AsyncClient(base_url=settings.stac_api_url, timeout=60) as client:
+async def _stac(method: str, path: str, json: dict | None = None, timeout: float = 60) -> dict[str, Any]:
+    async with httpx.AsyncClient(base_url=settings.stac_api_url, timeout=timeout) as client:
         r = await client.request(method, path, json=json)
         r.raise_for_status()
         return r.json()
@@ -502,6 +502,7 @@ async def search_catalog(
         covers_area=bool(covers_area),
         product_words=resolved.products,
         reasons_from=resolved.collections,
+        find_oldest=True,
     )
     if resolved.missing_products and result["status"] != "none_cover_the_area":
         result["note"] += (
@@ -524,12 +525,14 @@ async def run_search(
     covers_area: bool = False,
     product_words: list[str] | tuple[str, ...] = (),
     reasons_from: list[names.Collection] | None = None,
+    find_oldest: bool = False,
 ) -> dict[str, Any]:
     """One catalogue search, shared by the agent's search_catalog and the
     query form. `collections` None means every collection. `selections`
     keeps only those exact SELECTION values, except in the collections
     listed in `whole_ids`, which are searched whole: a query can ask for
-    Sentinel-2's Level-2A and every LISS-4 product at once."""
+    Sentinel-2's Level-2A and every LISS-4 product at once. `find_oldest`
+    adds `oldest_matching` when more scenes match than are returned."""
     start, end = windows[0][0], max(e for _, e in windows)
     filtered = collections is not None
 
@@ -656,6 +659,9 @@ async def run_search(
         result["searched"]["covers_area"] = True
     if more:
         result["note"] += f" Only the newest {len(scenes):,} are shown; narrow the dates or area to see older ones."
+        if find_oldest and (oldest := await _oldest_matching(body)) is not None:
+            result["oldest_matching"] = oldest
+            result["note"] += f" The oldest scene that matches is from {oldest}."
     else:
         result["total"] = len(scenes)
     if want_cover and not nothing_can_match and not scenes:
@@ -683,6 +689,27 @@ async def run_search(
     elif (why := _nothing_found(reasons_from if reasons_from is not None else collections or cat, windows)) is not None:
         result.update(why)
     return result
+
+
+async def _oldest_matching(body: dict[str, Any]) -> str | None:
+    """The date of the oldest scene the search matches, which the newest-1,000
+    window cannot show: the same search, oldest first, one scene, dates only.
+    None when the STAC API cannot say in time; the answer then has only what
+    was shown."""
+    try:
+        data = await _stac("POST", "/search", timeout=10, json={
+            **body,
+            "limit": 1,
+            "sortby": [{"field": "properties.datetime", "direction": "asc"}],
+            "fields": {"include": ["properties.datetime", "properties.DOP"], "exclude": ["geometry", "assets", "links"]},
+        })
+    except (httpx.HTTPError, ValueError):
+        return None
+    feats = data.get("features") or []
+    if not feats:
+        return None
+    p = feats[0].get("properties") or {}
+    return p.get("DOP") or (p.get("datetime") or "")[:10] or None
 
 
 # --- hand-off ----------------------------------------------------------------
@@ -757,6 +784,10 @@ def for_model(name: str, result: Any) -> str:
     """A tool result as the text the model reads."""
     if name == "search_catalog" and isinstance(result, dict) and "scenes" in result:
         slim = {k: v for k, v in result.items() if k != "scenes"}
+        if slim.get("more_available") and "oldest" in slim:
+            # "oldest" is the oldest of the scenes shown, which a model took
+            # for the start of the archive; name it for what it is.
+            slim["oldest_shown"] = slim.pop("oldest")
         slim["sample_scenes"] = [
             {k: s.get(k) for k in ("id", "date_of_pass", "selection", "availability")}
             for s in result["scenes"][:_MODEL_SAMPLE]

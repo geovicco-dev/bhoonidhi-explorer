@@ -32,13 +32,15 @@ and open to all.
 
 ## Run it
 
-You need Docker with Compose, and a model server that speaks the OpenAI API
-and supports tool calling (LM Studio, Ollama, llama.cpp, vLLM or OpenAI).
+You need Docker with Compose, and a model that supports tool calling: a
+server that speaks the OpenAI API (LM Studio, Ollama, llama.cpp, vLLM or
+OpenAI), or an Anthropic API key for Claude. Either can stand in for the
+other when it fails ([self-hosting](docs/self-hosting.md#the-model)).
 
 ```bash
 git clone https://github.com/geovicco-dev/bhoonidhi-explorer.git
 cd bhoonidhi-explorer
-cp .env.example .env          # set OPENAI_BASE_URL and OPENAI_MODEL
+cp .env.example .env          # set OPENAI_BASE_URL and OPENAI_MODEL, or MODEL_PROVIDER=anthropic and ANTHROPIC_API_KEY
 docker compose -f deploy/compose.yaml --env-file .env up -d
 ```
 

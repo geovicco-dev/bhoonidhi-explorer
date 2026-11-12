@@ -57,10 +57,22 @@ ITEM = {
 }
 
 
-def _fake(monkeypatch, features=None, more=False):
+class Seen(list):
+    """The search bodies a fake catalogue received; `oldest` holds the
+    oldest-first lookups a capped search adds, kept apart so tests of the
+    main search still read it at [0]."""
+
+    oldest: list[dict]
+
+
+OLDEST = {"properties": {"DOP": "1997-01-03", "datetime": "1997-01-03T00:00:00Z"}}
+
+
+def _fake(monkeypatch, features=None, more=False, oldest_status=200):
     """A fake catalogue. Returns the search bodies it received (the level
     sampling done while loading the collections is left out)."""
-    seen: list[dict] = []
+    seen = Seen()
+    seen.oldest = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/collections":
@@ -68,6 +80,10 @@ def _fake(monkeypatch, features=None, more=False):
             return httpx.Response(200, json=COLLECTIONS)
         if request.url.path == "/search":
             body = json.loads(request.content)
+            # A capped search's lookup of its oldest match sorts oldest first.
+            if (body.get("sortby") or [{}])[0].get("direction") == "asc":
+                seen.oldest.append(body)
+                return httpx.Response(oldest_status, json={"features": [OLDEST], "links": []})
             # Loading the catalogue asks each collection for its SELECTION
             # values only; a real search asks for the full item fields.
             if body.get("fields", {}).get("exclude") == ["geometry", "assets", "links"]:
@@ -216,6 +232,55 @@ def test_more_than_the_limit_says_so(monkeypatch):
     # The count is what came back, marked as not all there is.
     assert out["more_available"] is True and out["count"] == "3+" and "total" not in out
     assert "newest 3 " in out["note"]
+
+
+def test_a_capped_search_finds_its_oldest_match(monkeypatch):
+    # "How far back does it go?": the newest 1,000 cannot show the start, so the
+    # same search is asked again, oldest first, for one scene's date.
+    seen = _fake(monkeypatch, features=[{**ITEM, "id": f"SEN2B_MSI_{n}"} for n in range(3)], more=True)
+    out = asyncio.run(tools.search_catalog("1990-01-01", "2024-01-31", 1, 1, 2, 2, satellite="Sentinel-2B",
+                                           availability="Ready"))
+    assert len(seen) == 1 and len(seen.oldest) == 1
+    main, lookup = seen[0], seen.oldest[0]
+    assert lookup["limit"] == 1
+    assert lookup["sortby"] == [{"field": "properties.datetime", "direction": "asc"}]
+    # The same scenes are asked for: area, dates, collections and filters.
+    for key in ("bbox", "datetime", "collections", "filter", "filter-lang"):
+        assert lookup[key] == main[key]
+    assert out["oldest_matching"] == "1997-01-03"
+    assert "The oldest scene that matches is from 1997-01-03." in out["note"]
+    # What the map and the query form show is unchanged.
+    assert out["oldest"] == out["newest"] == "2024-01-01"
+    # The model reads the oldest shown under its own name.
+    for_model = json.loads(tools.for_model("search_catalog", out))
+    assert for_model["oldest_shown"] == "2024-01-01" and "oldest" not in for_model
+    assert for_model["oldest_matching"] == "1997-01-03"
+
+
+def test_a_search_that_is_not_capped_asks_once(monkeypatch):
+    seen = _fake(monkeypatch)
+    out = asyncio.run(tools.search_catalog("2024-01-01", "2024-01-31", 1, 1, 2, 2))
+    assert len(seen) == 1 and seen.oldest == []
+    assert "oldest_matching" not in out
+    assert json.loads(tools.for_model("search_catalog", out))["oldest"] == "2024-01-01"
+
+
+def test_a_failed_oldest_lookup_leaves_the_search_as_it_was(monkeypatch):
+    seen = _fake(monkeypatch, features=[{**ITEM, "id": f"SEN2B_MSI_{n}"} for n in range(3)], more=True,
+                 oldest_status=500)
+    out = asyncio.run(tools.search_catalog("2024-01-01", "2024-01-31", 1, 1, 2, 2))
+    assert len(seen.oldest) == 1
+    assert out["status"] == "ok" and out["count"] == "3+" and "oldest_matching" not in out
+    assert "oldest scene that matches" not in out["note"]
+
+
+def test_the_query_form_search_makes_no_oldest_lookup(monkeypatch):
+    # The query form shares run_search; only the chat's tool asks for the oldest match.
+    seen = _fake(monkeypatch, features=[{**ITEM, "id": f"SEN2B_MSI_{n}"} for n in range(3)], more=True)
+    cat = asyncio.run(tools.catalogue())
+    out = asyncio.run(tools.run_search(cat, [(tools.date(2024, 1, 1), tools.date(2024, 1, 31))], None,
+                                       collections=None))
+    assert out["more_available"] is True and seen.oldest == [] and "oldest_matching" not in out
 
 
 def test_a_scene_filed_under_two_products_comes_back_once(monkeypatch):

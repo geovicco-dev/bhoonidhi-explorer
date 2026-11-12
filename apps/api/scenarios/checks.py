@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import math
 import re
 import urllib.request
 from collections.abc import Callable
@@ -115,9 +116,12 @@ def scene_level(scene: dict[str, Any]) -> str:
 
 
 def _catalogue_post(body: dict[str, Any]) -> dict[str, Any]:
+    # The public STAC API refuses Python's default User-Agent.
     req = urllib.request.Request(
         settings.stac_api_url.rstrip("/") + "/search",
-        data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}, method="POST",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "User-Agent": "bhoonidhi-explorer-scenarios"},
+        method="POST",
     )
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.load(r)
@@ -267,12 +271,38 @@ def oldest_year(collection_ids: list[str], bbox: list[float]) -> Check:
         feats = data.get("features") or []
         if not feats:
             return "the catalogue has no scenes there, so the scenario needs new ground"
-        real = feats[0]["properties"]["datetime"][:4]
-        if real in run.last.answer:
-            return None
-        claimed = sorted(set(re.findall(r"\b(19\d{2}|20\d{2})\b", run.last.answer)))
-        return f"oldest scene is from {real}; the answer says {claimed or 'no year'}"
+        return start_year_said(run.last.answer, feats[0]["properties"]["datetime"][:4])
     return check
+
+
+# Words an answer uses to say where the archive starts, then the first year
+# within the same sentence. Bare "from" is left out: "I searched from 1997 to
+# today" names the search, not the archive's start.
+_START_WORDS = re.compile(
+    r"\b(?:go(?:es)? back|dates? back|back(?: only)? to|earliest|oldest|first|start(?:s|ed)?|"
+    r"begin(?:s)?|began|since|only from)\b",
+    re.IGNORECASE,
+)
+_YEAR = re.compile(r"\b(19\d{2}|20\d{2})\b")
+
+
+def start_year_said(answer: str, real: str) -> str | None:
+    """None when the first start year the answer gives is `real` and it does
+    not deny it; otherwise one sentence naming what it said instead. Finding
+    the year anywhere is not enough: "starts in June 2025, not 1997" names it,
+    and so does a wrong answer that mentions when one satellite began. An
+    answer to "how far back" leads with the start, so the first claim counts."""
+    if re.search(rf"\b(?:not|rather than|instead of)\s+(?:in\s+|to\s+|from\s+|back\s+to\s+|since\s+)?\**{real}\b",
+                 answer, re.IGNORECASE):
+        return f"oldest scene is from {real}; the answer says the scenes do not go back to {real}"
+    claimed: list[str] = []
+    for m in _START_WORDS.finditer(answer):
+        after = re.split(r"[.!?](?:\s|$)|\n", answer[m.end():m.end() + 60], maxsplit=1)[0]
+        if (year := _YEAR.search(after)) is not None:
+            claimed.append(year.group(1))
+    if claimed and claimed[0] == real:
+        return None
+    return f"oldest scene is from {real}; the answer first gives the start as {claimed[0] if claimed else 'no year'}"
 
 
 def answer_says(*phrases: str) -> Check:
@@ -391,25 +421,44 @@ def groups_by_satellite(at_least: int = 2) -> Check:
     return check
 
 
+def _searched_near(args: dict[str, Any], lon: float, lat: float) -> bool:
+    """Whether one search's area (a circle, or a box) holds the point."""
+    lat0, lon0 = args.get("lat"), args.get("lon")
+    if lat0 is not None and lon0 is not None:
+        # Inside the circle; a search without a radius counts as a 5 km one.
+        dlat, dlon = math.radians(lat - lat0), math.radians(lon - lon0)
+        a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat0)) * math.cos(math.radians(lat)) * math.sin(dlon / 2) ** 2
+        km = 2 * 6371.0088 * math.asin(math.sqrt(a))
+        return km <= float(args.get("radius_km") or 5) + 1
+    w, s0, e, n = (args.get(k) for k in ("minx", "miny", "maxx", "maxy"))
+    if w is None or s0 is None or e is None or n is None:
+        return False
+    return w - 0.05 <= lon <= e + 0.05 and s0 - 0.05 <= lat <= n + 0.05
+
+
 def area_used(lon: float, lat: float, *, expected: bool = True) -> Check:
     """Whether the search covered the area on the map. A message naming another
     place must search that place instead."""
     def check(run: Run) -> str | None:
         if (why := _no_search(run)) is not None:
             return why
-        def near(s: Search) -> bool:
-            args = s.args
-            lat0, lon0 = args.get("lat"), args.get("lon")
-            if lat0 is not None and lon0 is not None:
-                return abs(lat0 - lat) < 0.05 and abs(lon0 - lon) < 0.05
-            w, s0, e, n = (args.get(k) for k in ("minx", "miny", "maxx", "maxy"))
-            if w is None or s0 is None or e is None or n is None:
-                return False
-            return w - 0.05 <= lon <= e + 0.05 and s0 - 0.05 <= lat <= n + 0.05
-        hit = any(near(s) for s in run.searches)
+        hit = any(_searched_near(s.args, lon, lat) for s in run.searches)
         if hit == expected:
             return None
         return ("the search ignored the area on the map" if expected
                 else "the search used the area on the map instead of the place in the message")
+    return check
+
+
+def place_searched(name: str, lon: float, lat: float) -> Check:
+    """Whether a search covered the place the message names (a point inside it).
+    A search with no area at all looks through the whole of India and passes
+    every satellite-and-date check, so this is the only check that sees it."""
+    def check(run: Run) -> str | None:
+        if (why := _no_search(run)) is not None:
+            return why
+        if any(_searched_near(s.args, lon, lat) for s in run.searches):
+            return None
+        return f"no search covered {name}"
     return check
 

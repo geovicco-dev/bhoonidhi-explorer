@@ -7,7 +7,7 @@ one `.env` file at the repository root (copy `.env.example`).
 cp .env.example .env
 docker compose -f deploy/compose.yaml --env-file .env up -d
 docker compose -f deploy/compose.yaml --env-file .env ps
-curl -s localhost:8080/api/health     # {"status":"ok","tools":4,"catalogue":true}
+curl -s localhost:8080/api/health     # "status":"ok", "catalogue":true, and which model answers
 ```
 
 ## What runs
@@ -18,7 +18,7 @@ One container, `explorer`: the web app at `/` and the API at `/api`, on
 ```
 browser ─► explorer :8080 ─┬─ /       the web app (static files)
                            └─ /api/*  the API ─┬─► the STAC API (STAC_API_URL)
-                                               ├─► the model (OPENAI_BASE_URL)
+                                               ├─► the model (OPENAI_BASE_URL or Anthropic's API)
                                                ├─► Nominatim (place search)
                                                └─► bhoonidhi.nrsc.gov.in (quicklooks, product list)
 ```
@@ -29,9 +29,19 @@ browser ─► explorer :8080 ─┬─ /       the web app (static files)
 |---|---|---|
 | `EXPLORER_PORT`, `EXPLORER_BIND` | Where the explorer listens; `0.0.0.0` when a reverse proxy runs on another host | `8080`, `127.0.0.1` |
 | `EXPLORER_IMAGE`, `EXPLORER_TAG` | The image and its tag; point them at a published image to skip building | `bhoonidhi-explorer`, `local` |
-| `OPENAI_BASE_URL` | Any OpenAI-compatible server with tool calling | required |
+| `MODEL_PROVIDER` | Which model answers: `openai` for any OpenAI-compatible server, `anthropic` for Claude | `openai` |
+| `MODEL_FALLBACK` | The other provider, which answers when `MODEL_PROVIDER` fails (see "The model"); empty for none | empty |
+| `OPENAI_BASE_URL` | Any OpenAI-compatible server with tool calling | required for `openai` |
 | `OPENAI_API_KEY` | Its key (secret); local servers usually need none | empty |
-| `OPENAI_MODEL` | Model id | required |
+| `OPENAI_MODEL` | Model id | required for `openai` |
+| `ANTHROPIC_API_KEY` | A key from the Anthropic Console (secret) | required for `anthropic` |
+| `ANTHROPIC_MODEL` | Claude model id | `claude-haiku-5-5` |
+| `ANTHROPIC_EFFORT`, `ANTHROPIC_THINKING` | How hard Claude works on each step (`low` to `max`), and whether it thinks first (`disabled`, `adaptive`, `between_tools`); empty uses the model's default. Not every model accepts every value | empty, empty |
+| `ANTHROPIC_MAX_TOKENS` | The most one step may write, thinking included | `4096` |
+| `ANTHROPIC_CACHE_TTL` | How long the start of each request stays cached for the next step: `5m`, `1h` (cache writes cost twice as much) or `off` | `5m` |
+| `MODEL_FALLBACK_COOLDOWN_S`, `MODEL_FIRST_TOKEN_TIMEOUT_S` | After a failure, how long new questions go to the fallback; and, with a fallback set, how long a silent provider is waited for | `300`, `20` |
+| `MODEL_BUDGET_DAILY_USD`, `MODEL_BUDGET_MONTHLY_USD` | Spend ceilings in US dollars per UTC day and calendar month; past one, the fallback answers until the day or month ends. `0` is no ceiling | `0`, `0` |
+| `MODEL_HISTORY_TURNS` | Earlier turns sent to the model whole; older ones keep only the question and the answer. `0` sends every turn whole | `0` |
 | `STAC_API_URL` | The STAC API the scenes come from | `https://bhoonidhi-stac.ecotrakr.in` |
 | `STAC_PUBLIC_URL` | The same STAC API at the address visitors' browsers reach, for the scene card's "STAC Item" link; set it when `STAC_API_URL` is an address only the explorer reaches | empty: `STAC_API_URL` |
 | `GEOCODER_URL`, `GEOCODER_USER_AGENT` | Nominatim for place search; its policy requires a User-Agent naming the app | public Nominatim |
@@ -39,7 +49,8 @@ browser ─► explorer :8080 ─┬─ /       the web app (static files)
 | `MODEL_SLOTS`, `MODEL_QUEUE_MAX`, `MODEL_QUEUE_WAIT_S` | The line for the model: questions answered at once (match your model server's parallel limit), questions allowed to wait, and the longest wait in seconds. A question past either limit is refused with a message pointing to the query form | `4`, `20`, `180` |
 | `FORWARDED_ALLOW_IPS`, `CLIENT_IP_HEADER` | Which proxies to believe, and which header names the visitor; see "Behind a reverse proxy" | `127.0.0.1`, empty |
 
-A required value that is missing stops Compose with a message naming it.
+A provider in use without its model, address or key stops the server at
+start with a message naming the setting.
 
 ## The published image
 
@@ -61,10 +72,50 @@ release's commit, with base images pinned by digest; the image's
 ## The model
 
 The explorer's agent calls tools (place lookup, STAC API search, `bhd`
-commands), so the model must support tool calling. `host.docker.internal` in
-`OPENAI_BASE_URL` reaches a server on the machine running Docker, on Linux as
-well. A turn usually takes 10 to 40 seconds on a local model; the STAC API
-itself answers in about a second.
+commands), so the model must support tool calling. Two kinds of model can
+answer:
+
+- **An OpenAI-compatible server** (`MODEL_PROVIDER=openai`): LM Studio,
+  Ollama, llama.cpp, vLLM or OpenAI. `host.docker.internal` in
+  `OPENAI_BASE_URL` reaches a server on the machine running Docker, on
+  Linux as well. A turn usually takes 10 to 40 seconds on a local model.
+- **Claude** (`MODEL_PROVIDER=anthropic`) through Anthropic's own API. Each
+  question, the conversation so far and the tools' results are sent to
+  Anthropic. Give the explorer a key in an Anthropic workspace of its own
+  with a spend limit: the site is open to anyone, and that limit caps what
+  they can cost you. On Claude Haiku 5.5 with `ANTHROPIC_EFFORT=low` and
+  `ANTHROPIC_THINKING=disabled`, a question cost about $0.001 and took
+  about 5 seconds in our tests. The start of each request (the
+  instructions, the tools and the conversation so far) is cached, so most
+  of every step after the first is read from the cache at a tenth of the
+  price.
+
+The STAC API itself answers in about a second.
+
+**Fallback.** With `MODEL_FALLBACK` set to the other provider, the explorer
+switches by itself when `MODEL_PROVIDER` fails, and the visitor sees no
+error:
+
+| What happens | What the explorer does |
+|---|---|
+| No connection, nothing received for `MODEL_FIRST_TOKEN_TIMEOUT_S`, a server error or "overloaded" | The fallback answers; new questions go to it for `MODEL_FALLBACK_COOLDOWN_S`, then `MODEL_PROVIDER` is tried again |
+| Rate limited | The same, for as long as the provider's `Retry-After` asks if that is longer |
+| A refused key | The same, logged as an error |
+| Out of credit or past the provider's spend limit | The fallback answers, and `MODEL_PROVIDER` is tried again every hour |
+| `MODEL_BUDGET_DAILY_USD` or `MODEL_BUDGET_MONTHLY_USD` reached | The fallback answers until the UTC day or the month ends. An answer under way when the budget is passed is finished by the same model |
+| Any other refused request | The fallback answers that question only |
+| A failure halfway through an answer | The fallback carries on from the steps already done |
+
+When neither can answer, the visitor gets one plain message pointing to
+the query form, which needs no model. The budgets count only models with a
+known price (Claude's are built in); a local model is free to them.
+
+**What to watch.** `/api/health` shows under `model` who answers now
+(`answered_by`: `provider`, `fallback` or `nobody`), the reason when it is
+not the provider, and the day's and month's spend when a budget is set.
+Each answer writes one `model_usage` line to the log with the model, its
+steps, the tokens by kind and the cost; a switch writes one warning line
+with the reason. The lines never contain the question.
 
 ## The STAC API
 

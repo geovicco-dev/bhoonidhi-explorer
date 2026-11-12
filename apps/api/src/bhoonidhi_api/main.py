@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import geocode, limits, model_queue, query, sessions, tools
+from . import geocode, limits, model_queue, models, query, sessions, tools
 from .agent import run_agent
 from .config import settings
 
@@ -29,6 +29,7 @@ _QUICKLOOK_HOST = "bhoonidhi.nrsc.gov.in"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _app_log()
     sessions.init()
     # The query form's product list checks every product against the
     # catalogue (about 6 s); do it now so the first open is instant.
@@ -44,6 +45,19 @@ async def _warm() -> None:
     # A failed warm-up only means a slower first open of the form.
     with contextlib.suppress(Exception):
         await query.archive_list(await tools.catalogue())
+
+
+def _app_log() -> None:
+    """Sends the app's own log lines (model usage, model switches, the
+    conversation sweep) to the server's output. uvicorn sets up only its own
+    loggers, so without this they would show only at warning level or above."""
+    if log.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s:     %(message)s"))
+    log.addHandler(handler)
+    log.setLevel(logging.INFO)
+    log.propagate = False
 
 
 # How often old conversations are looked for. A conversation can outlive its
@@ -87,7 +101,9 @@ async def health() -> dict:
         "status": "ok",
         "tools": len(specs),
         "catalogue": tools.stac_enabled(),
-        "model": {"slots": line.slots, "answering": line.answering, "waiting": line.waiting},
+        # Which model answers now, and why when it is not MODEL_PROVIDER.
+        "model": {"slots": line.slots, "answering": line.answering, "waiting": line.waiting,
+                  **await asyncio.to_thread(models.health)},
     }
 
 
