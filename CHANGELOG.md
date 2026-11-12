@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- When a chat search finds more scenes than the 1,000 it shows, the agent
+  is also told the date of the oldest matching scene, so a question such as
+  "how far back do LISS-3 scenes over Punjab go" gets the archive's real
+  start date.
 ## [0.2.1] - 2026-10-05
 
 ### Fixed
