@@ -30,6 +30,13 @@ DELHI_RING = [[76.9, 28.5], [77.3, 28.5], [77.3, 28.8], [76.9, 28.8]]
 LISS3 = ["irs-1c-liss3", "irs-1d-liss3", "resourcesat-1-liss3", "resourcesat-2-liss3", "resourcesat-2a-liss3"]
 PUNJAB = [73.88, 29.54, 76.94, 32.51]
 
+# A point inside each place a message names (lon, lat), which a search for
+# that place must cover.
+IN_DELHI = (77.209, 28.6139)
+IN_SHILLONG = (91.8933, 25.5788)
+IN_AGRA = (78.0081, 27.1767)
+IN_PUNJAB = (75.857, 30.901)  # Ludhiana
+
 
 @dataclass
 class Scenario:
@@ -51,7 +58,7 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         "exists-satellite-date", "what exists",
         ["LISS-4 scenes over Delhi in 2024"],
-        [c.sensor_is("LISS4"), c.years(2024, 2024)],
+        [c.sensor_is("LISS4"), c.years(2024, 2024), c.place_searched("Delhi", *IN_DELHI)],
         about="one satellite and sensor over a place and a year",
     ),
     Scenario(
@@ -71,7 +78,7 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         "exists-how-far-back", "what exists",
         ["How far back does LISS-3 imagery go over Punjab, and roughly how many scenes a year?"],
-        [c.sensor_is("LISS3"), c.oldest_year(LISS3, PUNJAB)],
+        [c.sensor_is("LISS3"), c.oldest_year(LISS3, PUNJAB), c.place_searched("Punjab", *IN_PUNJAB)],
         about="the real oldest scene, which the newest-1,000 window cannot see",
     ),
     Scenario(
@@ -86,7 +93,7 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         "when-may-ten-years", "when",
         ["LISS-4 scenes over Delhi in May, from the last 10 years"],
-        [c.sensor_is("LISS4"), c.months(5), c.answer_avoids("610")],
+        [c.sensor_is("LISS4"), c.months(5), c.answer_avoids("610"), c.place_searched("Delhi", *IN_DELHI)],
         about="his own case: May of each year, not one continuous ten-year range",
     ),
     Scenario(
@@ -174,7 +181,8 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         "kind-ascending", "what kind",
         ["Only ascending passes of Sentinel-1 over the area on the map in 2026"],
-        [c.answer_says("not", "no ", "cannot", "unavailable")],
+        # "doesn't" and "couldn't" say it as plainly as "not".
+        [c.answer_says("not", "no ", "cannot", "unavailable", "n't")],
         area=DELHI,
         about="pass direction is not in the data: say what is and is not available",
     ),
@@ -183,7 +191,8 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         "where-city", "where",
         ["Sentinel-2 scenes over Shillong in August 2026"],
-        [c.used_tool("resolve_location"), c.searched("Sentinel-2A", "Sentinel-2B", "Sentinel-2C")],
+        [c.used_tool("resolve_location"), c.searched("Sentinel-2A", "Sentinel-2B", "Sentinel-2C"),
+         c.place_searched("Shillong", *IN_SHILLONG)],
         about="a city by name",
     ),
     Scenario(
@@ -197,7 +206,8 @@ SCENARIOS: list[Scenario] = [
         "where-named-place-wins", "where",
         ["LISS-4 scenes over Agra from 2025"],
         [c.used_tool("resolve_location"),
-         c.area_used(MATHURA_CIRCLE["lon"], MATHURA_CIRCLE["lat"], expected=False)],
+         c.area_used(MATHURA_CIRCLE["lon"], MATHURA_CIRCLE["lat"], expected=False),
+         c.place_searched("Agra", *IN_AGRA)],
         area=MATHURA_CIRCLE,
         about="a place in the message replaces the area on the map",
     ),
@@ -241,7 +251,8 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         "talk-now-for-agra", "talking",
         ["Sentinel-2 scenes over Delhi in August 2026", "now for Agra"],
-        [c.used_tool("resolve_location"), c.searched("Sentinel-2A", "Sentinel-2B", "Sentinel-2C")],
+        [c.used_tool("resolve_location"), c.searched("Sentinel-2A", "Sentinel-2B", "Sentinel-2C"),
+         c.place_searched("Agra", *IN_AGRA)],
         about="a follow-up that changes only the place",
     ),
     Scenario(
@@ -278,7 +289,7 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         "data-download-command", "getting the data",
         ["LISS-4 scenes over the area on the map from 2025", "give me the command to download these"],
-        [c.used_tool("bhd_command"), c.answer_says("bhd query create"),
+        [c.used_tool("bhd_command"), c.answer_says("query create"),
          c.answer_avoids("bhoonidhi download", "wget", "curl -o")],
         area=MATHURA_CIRCLE,
         about="the hand-off commands, shown as the tool returns them",
