@@ -12,6 +12,10 @@
   this bundle: the STAC API, the place search and the quicklook images.
   The Anthropic client checks against the image's system certificates
   instead.
+- Next.js moves from 16.3.6 to 16.4.6, past the advisories published for
+  16.3, among them remote code execution in `use cache` functions and in
+  the image optimizer. The image serves the static export and runs no
+  Next.js server, so none of them reached the live site.
 - The lockfile resolves the build and lint tools' dependencies to
   versions without known advisories: undici, systeminformation, zod,
   source-map-js, fast-uri and ip-address. The shadcn CLI moves to 4.23.0
