@@ -71,7 +71,7 @@ wheels = [
 
 [[package]]
 name = "bhoonidhi-api"
-version = "0.3.0"
+version = "0.3.1"
 source = { editable = "apps/api" }
 dependencies = [
     { name = "anthropic" },
