@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased]
+
+### Security
+
+- The API's certificate bundle, certifi, moves from 2026.7.22 to
+  2026.10.23. That release removes three emSign root certificates
+  (emSign ECC Root CA - G3, emSign Root CA - C1 and emSign ECC Root
+  CA - C3), its fix for the advisory about compromised emSign
+  intermediate CA keys. The API checks its own HTTPS requests against
+  this bundle: the STAC API, the place search and the quicklook images.
+  The Anthropic client checks against the image's system certificates
+  instead.
+- The lockfile resolves the build and lint tools' dependencies to
+  versions without known advisories: undici, systeminformation, zod,
+  source-map-js, fast-uri and ip-address. The shadcn CLI moves to 4.23.0
+  inside its range, which drops the old MCP SDK and the Express server it
+  pulled in, with proxy-addr, body-parser, qs, hono and
+  @hono/node-server. None of these is in the image.
+
 ## [0.3.0] - 2026-11-12
 
 ### Added
