@@ -88,6 +88,9 @@ def _fake(monkeypatch, features=None, more=False, oldest_status=200):
             # values only; a real search asks for the full item fields.
             if body.get("fields", {}).get("exclude") == ["geometry", "assets", "links"]:
                 sels = SELECTIONS.get(body["collections"][0], [])
+                # A lookup of one SELECTION value finds it only if the items carry it.
+                if (body.get("filter") or {}).get("op") == "=":
+                    sels = [s for s in sels if s == body["filter"]["args"][1]]
                 return httpx.Response(200, json={"features": [{"properties": {"SELECTION": s}} for s in sels]})
             seen.append(body)
             links = [{"rel": "next", "href": "x"}] if more else []
@@ -381,6 +384,8 @@ def test_nothing_covers_the_area_says_how_many_overlap(monkeypatch):
         body = json.loads(request.content)
         if body.get("fields", {}).get("exclude") == ["geometry", "assets", "links"]:
             sels = SELECTIONS.get(body["collections"][0], [])
+            if (body.get("filter") or {}).get("op") == "=":
+                sels = [s for s in sels if s == body["filter"]["args"][1]]
             return httpx.Response(200, json={"features": [{"properties": {"SELECTION": s}} for s in sels]})
         calls.append(body)
         covering = any("s_contains" in json.dumps(body.get("filter", {})) for _ in [0])
@@ -598,9 +603,9 @@ def test_bhd_command_uses_portal_names(fake_stac):
         minx=91.0, miny=25.0, maxx=92.5, maxy=26.5, scene_ids=["A", "B"], name="Shillong Jan",
     ))
     cmds = [s["command"] for s in out["steps"]]
-    assert cmds[0] == "uvx bhoonidhi-downloader@0.5.6 auth login"
+    assert cmds[0] == "uvx bhoonidhi-downloader@0.6.0 auth login"
     create = shlex.split(cmds[1])
-    assert create[:6] == ["uvx", "bhoonidhi-downloader@0.5.6", "query", "create", "2024-01-01", "2024-01-31"]
+    assert create[:6] == ["uvx", "bhoonidhi-downloader@0.6.0", "query", "create", "2024-01-01", "2024-01-31"]
     sats = [create[i + 1] for i, a in enumerate(create) if a == "--sat"]
     assert sats == ["ResourceSat-2:LISS4(MX23)", "ResourceSat-2A:LISS4(MX23)"]
     assert create[create.index("--minx") + 1] == "91.0"
@@ -631,10 +636,10 @@ def test_one_scene_hands_off_its_day_middle_and_id(fake_stac):
     scene = tools._item_to_scene({**ITEM, "properties": {**ITEM["properties"], "DOP": "01-Jan-2024"}})
     out = query.scene_handoff(scene, asyncio.run(tools.catalogue()))
     lines = out["bhd"].splitlines()
-    assert lines[0] == "uvx bhoonidhi-downloader@0.5.6 auth login"
+    assert lines[0] == "uvx bhoonidhi-downloader@0.6.0 auth login"
     create = shlex.split(lines[1])
-    assert create[:8] == ["uvx", "bhoonidhi-downloader@0.5.6", "query", "create",
-                          "2024-01-01", "2024-01-01", "--sat", "Sentinel-2B:MSI:Level-2A"]
+    assert create[:12] == ["uvx", "bhoonidhi-downloader@0.6.0", "query", "create",
+                           "2024-01-01", "2024-01-01", "--sat", "Sentinel-2B", "--sen", "MSI", "--prod", "Level-2A"]
     assert create[create.index("--lat") + 1 : create.index("--lat") + 6] == ["25.5", "--lon", "91.5", "--radius", "5"]
     slug = create[create.index("--slug") + 1]
     assert re.fullmatch(r"sentinel-2b-msi-2024-01-01-[0-9a-f]{6}", slug)
@@ -668,11 +673,12 @@ def test_chosen_scenes_hand_off_one_search_and_their_ids(fake_stac):
     })
     out = query.scenes_handoff([a, b], asyncio.run(tools.catalogue()))
     lines = out["bhd"].splitlines()
-    assert lines[0] == "uvx bhoonidhi-downloader@0.5.6 auth login"
+    assert lines[0] == "uvx bhoonidhi-downloader@0.6.0 auth login"
     create = shlex.split(lines[1])
     # Their days as one range, their product once, a box around their middles.
-    assert create[2:9] == ["query", "create", "2024-01-01", "2024-03-15", "--sat", "Sentinel-2B:MSI:Level-2A", "--minx"]
-    assert create[8:16] == ["--minx", "91.49", "--maxx", "93.51", "--miny", "25.49", "--maxy", "26.51"]
+    assert create[2:13] == ["query", "create", "2024-01-01", "2024-03-15",
+                            "--sat", "Sentinel-2B", "--sen", "MSI", "--prod", "Level-2A", "--minx"]
+    assert create[12:20] == ["--minx", "91.49", "--maxx", "93.51", "--miny", "25.49", "--maxy", "26.51"]
     slug = create[create.index("--slug") + 1]
     assert re.fullmatch(r"scenes-2024-01-01-[0-9a-f]{6}", slug)
     assert shlex.split(lines[2])[2:] == [
@@ -719,3 +725,79 @@ def test_parse_arguments_repairs_stray_quote_after_number():
     assert parse_arguments('{"maxy":-1.5e3"}') == {"maxy": -1500.0}
     assert parse_arguments("") == {}
     assert parse_arguments('{"a": [1, 2') is None
+
+
+def test_one_satellite_gets_separate_flags_several_get_packed_values():
+    assert tools.sat_args(["Sentinel-2B:MSI:Level-2A"]) == [
+        "--sat", "Sentinel-2B", "--sen", "MSI", "--prod", "Level-2A"]
+    assert tools.sat_args(["Sentinel-2B"]) == ["--sat", "Sentinel-2B"]
+    assert tools.sat_args(["CartoSat-3::PAN"]) == ["--sat", "CartoSat-3", "--prod", "PAN"]
+    assert tools.sat_args(["A:X", "B", "A:X"]) == ["--sat", "A:X", "--sat", "B"]
+
+
+# ResourceSat-2A AWIFS holds a product with no suffix beside a named one, as
+# the portal's ResourceSat AWIFS sensors do.
+AWIFS = ["ResourceSat-2A_AWIFS", "ResourceSat-2A_AWIFS_L2"]
+
+
+def test_a_suffixless_scene_beside_named_products_hands_off_as_others(fake_stac, monkeypatch):
+    from bhoonidhi_api import query
+
+    monkeypatch.setitem(SELECTIONS, "resourcesat-2a-awifs", AWIFS)
+    scene = tools._item_to_scene({
+        **ITEM, "id": "R2A_AWIFS_x", "collection": "resourcesat-2a-awifs",
+        "properties": {**ITEM["properties"], "SATELLITE": "IRS-R2A", "SENSOR": "AWIFS",
+                       "SELECTION": "ResourceSat-2A_AWIFS", "DOP": "01-Jan-2024"},
+    })
+    out = query.scene_handoff(scene, asyncio.run(tools.catalogue()))
+    create = shlex.split(out["bhd"].splitlines()[1])
+    assert create[6:12] == ["--sat", "ResourceSat-2A", "--sen", "AWIFS", "--prod", "Others"]
+    assert "ResourceSat-2A AWIFS Others on 2024-01-01" in out["prompt"]
+
+
+def test_others_in_a_query_selects_only_the_suffixless_product(fake_stac, monkeypatch):
+    from bhoonidhi_api import query
+
+    monkeypatch.setitem(SELECTIONS, "resourcesat-2a-awifs", AWIFS)
+    checked = query.check(
+        {"items": [{"satellite": "ResourceSat-2A", "sensor": "AWIFS", "product": "Others"}]},
+        asyncio.run(tools.catalogue()),
+    )
+    assert checked.selections == ["ResourceSat-2A_AWIFS"]
+    assert checked.sat_values == ["ResourceSat-2A:AWIFS:Others"]
+
+
+def test_the_archive_list_names_others_and_keeps_unlisted_products(fake_stac, monkeypatch):
+    from bhoonidhi_api import query
+
+    monkeypatch.setitem(SELECTIONS, "resourcesat-2a-awifs", [*AWIFS, "ResourceSat-2A_AWIFS_L1"])
+    monkeypatch.setattr(query, "_with_scenes", set(AWIFS) | {"ResourceSat-2A_AWIFS_L1"})
+    monkeypatch.setattr(query.archive, "read", lambda *a, **k: [{"satellite": "ResourceSat-2A", "collections": [
+        {"ResourceSat-2A_AWIFS_L2": {"sensor": "AWIFS", "sat_value": "ResourceSat-2A:AWIFS:L2"}},
+        {"ResourceSat-2A_AWIFS": {"sensor": "AWIFS", "sat_value": "ResourceSat-2A:AWIFS:Others"}},
+    ]}])
+    listed = asyncio.run(query.archive_list(asyncio.run(tools.catalogue())))
+    products = {p["selection"]: p for p in listed[0]["products"]}
+    assert products["ResourceSat-2A_AWIFS_L2"]["product"] == "L2"
+    assert products["ResourceSat-2A_AWIFS"]["product"] == "Others"
+    # The catalogue holds scenes of a product the portal no longer lists.
+    assert products["ResourceSat-2A_AWIFS_L1"]["product"] == "L1"
+    assert products["ResourceSat-2A_AWIFS_L1"]["description"] == "No longer in the portal's product list"
+    assert products["ResourceSat-2A_AWIFS_L1"]["has_scenes"] is True
+    assert products["ResourceSat-2A_AWIFS_L1"]["start"] == "12/07/2016"
+    assert products["ResourceSat-2A_AWIFS_L1"]["resolution_m"] == "56"
+
+
+def test_a_suffixless_product_the_portal_dropped_is_found_in_the_catalogue(fake_stac, monkeypatch):
+    """IRS-1A's original LISS1 product left the portal's list but its scenes
+    stay in the catalogue, where a sample of the newest scenes may miss them."""
+    from bhoonidhi_api.names import Collection
+
+    monkeypatch.setitem(SELECTIONS, "resourcesat-2a-awifs", AWIFS)
+    awifs = Collection(id="resourcesat-2a-awifs", platform="resourcesat-2a", satellite="ResourceSat-2A",
+                       sensor="AWIFS", products=("ResourceSat-2A_AWIFS_L2",))
+    msi = Collection(id="sentinel-2b-msi", platform="sentinel-2b", satellite="Sentinel-2B", sensor="MSI",
+                     products=("Sentinel-2B_MSI_Level-1C", "Sentinel-2B_MSI_Level-2A"))
+    out = asyncio.run(tools._with_unlisted_bare_products([awifs, msi]))
+    assert out[0].products == ("ResourceSat-2A_AWIFS_L2", "ResourceSat-2A_AWIFS")
+    assert out[1] == msi

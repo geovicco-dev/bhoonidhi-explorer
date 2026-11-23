@@ -23,6 +23,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from bhoonidhi_downloader.schemas.selection import OTHERS
+
 
 @dataclass(frozen=True)
 class Collection:
@@ -119,6 +121,16 @@ def levels(collection: Collection) -> list[str]:
     """The product levels a collection holds, in catalogue order, once."""
     seen = (level_of(collection, s) for s in collection.products)
     return list(dict.fromkeys(x for x in seen if x))
+
+
+def product_value(collection: Collection, selection: str) -> str:
+    """The `--prod` value that selects this SELECTION alone: its level, or
+    Others for the level-less product of a collection that also holds levels.
+    Empty when the satellite and sensor alone already select it."""
+    level = level_of(collection, selection)
+    if level:
+        return level
+    return OTHERS if levels(collection) else ""
 
 
 def _spellings(catalogue: list[Collection]) -> dict[tuple[str, str], set[str]]:

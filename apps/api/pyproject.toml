@@ -13,7 +13,7 @@ dependencies = [
     # The availability labels (Availability enum) and the product list, shared
     # with `bhd`, the command users run to download. Pinned exactly: the API
     # reads the downloader's archive parser, not only its public SDK.
-    "bhoonidhi-downloader==0.5.6",
+    "bhoonidhi-downloader==0.6.0",
     "anthropic>=2.8,<3",
 ]
 

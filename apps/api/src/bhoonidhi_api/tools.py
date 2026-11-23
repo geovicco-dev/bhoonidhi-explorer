@@ -15,6 +15,7 @@ scenes may be up to a week old.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import hashlib
 import json
 import math
@@ -35,12 +36,28 @@ from .config import settings
 # How the handed-off commands start bhd: through uvx, pinned to the release
 # they are written for, so they run anywhere uv is installed, with no bhd
 # install. The login and saved searches live in ~/.bhoonidhi, so separate
-# uvx runs share them. 0.5.6 is the first release with `query create --slug`.
-BHD = ["uvx", "bhoonidhi-downloader@0.5.6"]
+# uvx runs share them. 0.6.0 is the first release with `--prod`, and with
+# `Others` for a product whose portal name has no suffix.
+BHD = ["uvx", "bhoonidhi-downloader@0.6.0"]
 
 # In a terminal, `query create` and `query download` open a scrolling table
 # that waits for q; --plain prints it and exits, so the next command runs.
 PLAIN = "--plain"
+
+
+def sat_args(values: list[str]) -> list[str]:
+    """`query create` arguments for `SAT[:SEN[:PROD]]` values: one satellite
+    as `--sat SAT --sen SEN --prod PROD`, several as repeated packed `--sat`,
+    since `--sen` and `--prod` only go with a single `--sat`."""
+    values = list(dict.fromkeys(values))
+    if len(values) != 1:
+        return [arg for value in values for arg in ("--sat", value)]
+    parts = values[0].split(":")
+    out = ["--sat", parts[0]]
+    for flag, part in zip(("--sen", "--prod"), parts[1:], strict=False):
+        if part:
+            out += [flag, part]
+    return out
 
 
 def throwaway_slug(label: str, key: str) -> str:
@@ -183,10 +200,41 @@ async def catalogue() -> list[names.Collection]:
             gsd_m=min(s.get("gsd") or [], default=None),
             start=(interval[0] or "")[:10] or None,
             end=(interval[1] or "")[:10] or None,
-            products=from_archive.get(f"{satellite}_{sensor}") or tuple(sels),
+            # The portal's list, plus what the sample saw that the portal
+            # no longer lists.
+            products=tuple(dict.fromkeys([*from_archive.get(f"{satellite}_{sensor}", ()), *sels])),
         ))
+    out = await _with_unlisted_bare_products(out)
     _catalogue_cache = out
     return out
+
+
+async def _with_unlisted_bare_products(cat: list[names.Collection]) -> list[names.Collection]:
+    """Add the product with no suffix ("IRS-1A_LISS1") to a collection that
+    holds named products when its scenes are in the catalogue but neither the
+    portal's list nor the sample named it: the portal can drop a product from
+    its list and keep serving it."""
+
+    async def holds(c: names.Collection) -> bool:
+        bare = f"{c.satellite}_{c.sensor}"
+        if bare in c.products or not names.levels(c):
+            return False
+        try:
+            data = await _stac("POST", "/search", json={
+                "collections": [c.id], "limit": 1,
+                "fields": {"include": ["id"], "exclude": ["geometry", "assets", "links"]},
+                "filter-lang": "cql2-json",
+                "filter": {"op": "=", "args": [{"property": "SELECTION"}, bare]},
+            })
+        except httpx.HTTPError:
+            return False
+        return bool(data.get("features"))
+
+    found = await asyncio.gather(*(holds(c) for c in cat))
+    return [
+        dataclasses.replace(c, products=(*c.products, f"{c.satellite}_{c.sensor}")) if add else c
+        for c, add in zip(cat, found, strict=True)
+    ]
 
 
 async def list_collections() -> dict[str, Any]:
@@ -745,8 +793,7 @@ async def bhd_command(
         return {"status": "no_such_combination", "error": f"{satellite} does not carry the sensor {sensor}."}
 
     create = [*BHD, "query", "create", start_date, end_date]
-    for value in dict.fromkeys(f"{c.satellite}:{c.sensor}" for c in resolved.collections):
-        create += ["--sat", value]
+    create += sat_args([f"{c.satellite}:{c.sensor}" for c in resolved.collections])
     if "intersects" in area:
         create += ["--lat", str(lat), "--lon", str(lon), "--radius", str(10.0 if radius_km is None else radius_km)]
     else:

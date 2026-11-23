@@ -87,7 +87,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=2.8,<3" },
-    { name = "bhoonidhi-downloader", specifier = "==0.5.6" },
+    { name = "bhoonidhi-downloader", specifier = "==0.6.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "openai", specifier = ">=1.54" },
@@ -98,7 +98,7 @@ requires-dist = [
 
 [[package]]
 name = "bhoonidhi-downloader"
-version = "0.5.6"
+version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
@@ -107,9 +107,9 @@ dependencies = [
     { name = "tabulate" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/53/08/e2de8d4fde0be2ff27c5a1a071ae81e3769c208a480677630a75f8aa364e/bhoonidhi_downloader-0.5.6.tar.gz", hash = "sha256:229978bbca519949b559a4f66b7166e3877b4fc1e511c49140e89a4b1d181a6b", size = 266315, upload-time = "2026-09-25T16:44:06.34Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/55/71/394dfa71e323f3a0b27ffaa234b7cc7d0521afd5eb3275ee017f873f1216/bhoonidhi_downloader-0.6.0.tar.gz", hash = "sha256:746ce74ef89a193c3c0dc6e64559f9f98e6996aa0a8f5ed231344f93be13ebb0", size = 270889, upload-time = "2026-11-23T10:02:50.631Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/39/ff/746505acc22119cc9a8a3efd631e799346efa407b2f500caad55f745df25/bhoonidhi_downloader-0.5.6-py3-none-any.whl", hash = "sha256:b4def817c03bffddf40a83268954ebbb865913d5a6e16b200d0e3016f4eea551", size = 110559, upload-time = "2026-09-25T16:44:05.103Z" },
+    { url = "https://files.pythonhosted.org/packages/65/3f/086b6fbd868a99e3568030529018666064a374a4850bde4166cd45e35d61/bhoonidhi_downloader-0.6.0-py3-none-any.whl", hash = "sha256:f7e69b125205f3d466eb87cbe984d6664c88a1e170ec674e0306432093fe4000", size = 112010, upload-time = "2026-11-23T10:02:49.655Z" },
 ]
 
 [[package]]

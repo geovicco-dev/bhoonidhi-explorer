@@ -1,5 +1,28 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- The download commands use bhoonidhi-downloader 0.6.0. For one satellite
+  they name it as `--sat SAT --sen SEN --prod PROD`; several satellites
+  still go as repeated `--sat SAT:SEN:PROD`.
+
+### Fixed
+
+- A product whose portal name has no suffix, such as
+  `ResourceSat-2_AWIFS`, shows as `Others` in the query form and the
+  archive list when its sensor also has named products, and picking it
+  searches that product alone. Before, it showed as the standard product
+  and picking it searched the whole sensor. Its download commands use
+  `--prod Others`.
+- Products the portal no longer lists but whose scenes the STAC API
+  holds, such as IRS-1A's original LISS1 and LISS2 products, stay in the
+  query form and the archive list, marked "No longer in the portal's
+  product list". Their download commands find their scenes: before, the
+  commands for an original IRS-1A scene searched only the Level-2
+  product.
+
 ## [0.3.1] - 2026-11-14
 
 ### Security

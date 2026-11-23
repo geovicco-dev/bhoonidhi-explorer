@@ -176,7 +176,8 @@ def check(query: dict[str, Any], cat: list[names.Collection]) -> Checked:
         chosen.extend(hits)
         product = item.get("product")
         if product:
-            selection = str(item.get("selection") or f"{item['satellite']}_{item['sensor']}_{product}")
+            bare = f"{item['satellite']}_{item['sensor']}"
+            selection = str(item.get("selection") or (bare if product == names.OTHERS else f"{bare}_{product}"))
             if not any(selection in c.products for c in hits):
                 held = dict.fromkeys(lv for c in hits for lv in names.levels(c))
                 out.problems.append(_problem(
@@ -546,9 +547,7 @@ def bhd_steps(query: dict[str, Any], scene_ids: list[str], cat: list[names.Colle
     if not scene_ids:
         return {"status": "invalid_request", "error": "The query found no scenes to download."}
     start, end = checked.windows[0][0], max(e for _, e in checked.windows)
-    create = [*tools.BHD, "query", "create", start.isoformat(), end.isoformat()]
-    for value in dict.fromkeys(checked.sat_values):
-        create += ["--sat", value]
+    create = [*tools.BHD, "query", "create", start.isoformat(), end.isoformat(), *tools.sat_args(checked.sat_values)]
     if area.get("kind") == "circle":
         create += ["--lat", str(area["lat"]), "--lon", str(area["lon"]), "--radius", str(area["radius_km"])]
     else:
@@ -613,11 +612,11 @@ def scene_handoff(scene: dict[str, Any], cat: list[names.Collection]) -> dict[st
     sid = scene.get("id")
     if not c or not day or not middle or not sid:
         return {"status": "invalid_request", "error": "This scene lacks the satellite, date or footprint a download needs."}
-    level = names.level_of(c, str(scene.get("selection") or ""))
+    level = names.product_value(c, str(scene.get("selection") or ""))
     sat = f"{c.satellite}:{c.sensor}" + (f":{level}" if level else "")
     lat, lon = middle
     slug = tools.throwaway_slug(f"{c.id}-{day.isoformat()}", sid)
-    create = [*tools.BHD, "query", "create", day.isoformat(), day.isoformat(), "--sat", sat,
+    create = [*tools.BHD, "query", "create", day.isoformat(), day.isoformat(), *tools.sat_args([sat]),
               "--lat", str(lat), "--lon", str(lon), "--radius", str(SCENE_RADIUS_KM), "--slug", slug, tools.PLAIN]
     download = [*tools.BHD, "query", "download", slug, "--out", "./bhoonidhi", "--select", sid, tools.PLAIN]
     remove = [*tools.BHD, "query", "rm", slug]
@@ -662,7 +661,7 @@ def scenes_handoff(scenes: list[dict[str, Any]], cat: list[names.Collection]) ->
         if not c or not day or not middle or not sid:
             return {"status": "invalid_request",
                     "error": f"Scene {sid or '(no id)'} lacks the satellite, date or footprint a download needs."}
-        level = names.level_of(c, str(scene.get("selection") or ""))
+        level = names.product_value(c, str(scene.get("selection") or ""))
         sats[f"{c.satellite}:{c.sensor}" + (f":{level}" if level else "")] = (
             f"{c.satellite} {c.sensor}" + (f" {level}" if level else ""))
         days.append(day)
@@ -676,9 +675,7 @@ def scenes_handoff(scenes: list[dict[str, Any]], cat: list[names.Collection]) ->
         "maxx": round(max(lon for _, lon in middles) + _BOX_PAD_DEG, 4),
         "maxy": round(max(lat for lat, _ in middles) + _BOX_PAD_DEG, 4),
     }
-    create = [*tools.BHD, "query", "create", start.isoformat(), end.isoformat()]
-    for value in sats:
-        create += ["--sat", value]
+    create = [*tools.BHD, "query", "create", start.isoformat(), end.isoformat(), *tools.sat_args(list(sats))]
     for key in ("minx", "maxx", "miny", "maxy"):
         create += [f"--{key}", str(box[key])]
     slug = tools.throwaway_slug(f"scenes-{start.isoformat()}", ",".join(sorted(ids)))
@@ -718,7 +715,10 @@ async def _selections_with_scenes(cat: list[names.Collection]) -> set[str]:
         async with sem:
             body: dict[str, Any] = {"collections": [c.id], "limit": 1,
                                     "fields": {"include": ["id"], "exclude": ["geometry", "assets", "links"]}}
-            if selection != f"{c.satellite}_{c.sensor}":
+            bare = f"{c.satellite}_{c.sensor}"
+            # The product with no suffix matches by SELECTION too once the
+            # collection also holds named products.
+            if selection != bare or names.levels(c):
                 body |= {"filter-lang": "cql2-json",
                          "filter": {"op": "=", "args": [{"property": "SELECTION"}, selection]}}
             try:
@@ -730,6 +730,14 @@ async def _selections_with_scenes(cat: list[names.Collection]) -> set[str]:
     found = await asyncio.gather(*(has(c, s) for c in cat for s in (c.products or (f"{c.satellite}_{c.sensor}",))))
     _with_scenes = {s for s in found if s}
     return _with_scenes
+
+
+def _portal_date(iso: str | None) -> str | None:
+    """A catalogue date ("1991-05-14...") in the portal's MM/DD/YYYY."""
+    if not iso or len(iso) < 10:
+        return None
+    y, m, d = iso[:10].split("-")
+    return f"{m}/{d}/{y}"
 
 
 async def archive_list(cat: list[names.Collection]) -> list[dict[str, Any]]:
@@ -745,10 +753,13 @@ async def archive_list(cat: list[names.Collection]) -> list[dict[str, Any]]:
             for selection, meta in entry.items():
                 sensor = str(meta.get("sensor") or "")
                 c = by_pair.get((str(sat.get("satellite")), sensor))
+                # The last part of bhd's exact --sat value: the product's own
+                # suffix, or Others for a suffix-less product beside named ones.
+                value = str(meta.get("sat_value") or "").split(":")
                 products.append({
                     "selection": selection,
                     "sensor": sensor,
-                    "product": meta.get("product_token") or None,
+                    "product": value[2] if len(value) == 3 else None,
                     "description": str(meta.get("product") or "").strip(),
                     "resolution_m": meta.get("resolution"),
                     "start": meta.get("start_date"),
@@ -757,6 +768,29 @@ async def archive_list(cat: list[names.Collection]) -> list[dict[str, Any]]:
                     "catalogue_start": c.start if c else None,
                     "catalogue_end": c.end if c else None,
                     "has_scenes": selection in with_scenes,
+                })
+        # Products the catalogue holds scenes of but the portal no longer
+        # lists, such as IRS-1A's original LISS1 product: still searchable.
+        listed = {p["selection"] for p in products}
+        for c in cat:
+            if c.satellite != sat.get("satellite"):
+                continue
+            for selection in c.products:
+                if selection in listed or selection not in with_scenes:
+                    continue
+                products.append({
+                    "selection": selection,
+                    "sensor": c.sensor,
+                    "product": names.product_value(c, selection) or None,
+                    "description": "No longer in the portal's product list",
+                    "resolution_m": None if c.gsd_m is None else f"{c.gsd_m:g}",
+                    # The portal's date format, from the collection's scene dates.
+                    "start": _portal_date(c.start),
+                    "end": _portal_date(c.end),
+                    "collection": c.id,
+                    "catalogue_start": c.start,
+                    "catalogue_end": c.end,
+                    "has_scenes": True,
                 })
         out.append({
             "satellite": sat.get("satellite"),
