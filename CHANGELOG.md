@@ -1,5 +1,30 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- The Scenes tab opens a satellite into its sensors and a sensor into its
+  products. Clicking a row's name lists what is inside it, and the date
+  graph, the scene strip and the map show only its scenes. A breadcrumb
+  leads back up, and Esc goes up one level from the rows. The coloured
+  square beside a name chooses rows to compare: satellites, the sensors of
+  one satellite, or the products of one sensor. Going back up brings back
+  the rows chosen there before. A session reopens at the level its rows
+  were chosen at.
+
+### Changed
+
+- Clicking a satellite's name in the Scenes tab opens it. Choosing several
+  satellites moves to the coloured square beside each name.
+- Names in the Scenes tab show in full: the name column fits the longest
+  name, up to half the tab.
+- The rows scroll inside their chart, so the scene strip stays in view, and
+  "Hide rows" folds them away. The open panel's height limit rises from
+  512 to 576 px to give them room. On a window too short for two rows and
+  the strip, the tab scrolls instead of the rows running into the scene
+  count.
+
 ## [0.3.2] - 2026-11-23
 
 ### Changed

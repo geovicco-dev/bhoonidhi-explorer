@@ -1,13 +1,15 @@
 "use client"
 
 import { useCallback, useRef, type KeyboardEvent, type PointerEvent } from "react"
-import type { TimelineRow } from "./aggregate"
+import { IconChevronRight } from "@tabler/icons-react"
 
-// The satellite rows under the date overview: one row per satellite, one
-// column per period, each cell as strong as its scene count. Drag across the
-// columns to mark a stretch (the Scenes tab zooms to it on release); click a
-// satellite's name to add it to the chosen satellites or take it out (none
-// chosen shows every one). Arrows move the marked stretch, Escape clears it.
+// The rows under the date overview: one row per satellite, sensor or product,
+// one column per period, each cell as strong as its scene count. Drag across
+// the columns to mark a stretch (the Scenes tab zooms to it on release).
+// Click a row's name to open it (a satellite's sensors, a sensor's products;
+// a product's name chooses it); click its coloured square to choose it along
+// with others. Arrows move the marked stretch, Escape clears it. When the
+// tab is short the rows scroll inside the chart.
 //
 // Drawn here rather than with the design system's DensityTimeline, which
 // fixes each cell's strength at 28% to 100% on a straight scale: a satellite
@@ -16,26 +18,45 @@ import type { TimelineRow } from "./aggregate"
 // strength and the scale rises steeply for small counts (square root), still
 // shared by every row, so a stronger cell always means more scenes.
 
+export type DisplayRow = {
+  key: string
+  label: string
+  color: string
+  // Scenes in the chosen dates.
+  count: number
+  // Opens into rows of its own (a satellite or a sensor).
+  expandable: boolean
+  chosen: boolean
+  dimmed: boolean
+}
+
 type Props = {
-  rows: TimelineRow[]
+  rows: DisplayRow[]
   buckets: string[]
   // counts[row][bucket]
   counts: number[][]
   // Marked columns [first, last], or null.
   range: [number, number] | null
   onRange: (range: [number, number] | null) => void
-  // Chosen satellites' row ids; empty when every satellite shows.
-  selectedRowIds: string[]
-  onRowClick: (id: string) => void
+  onOpen: (key: string) => void
+  onChoose: (key: string) => void
   // Strength of a cell with one scene when the busiest cell is far busier.
   floor: number
+  // Shared with the overview above, so the graph sits exactly over the columns.
+  labelWidth: string
 }
 
-// Shared with the overview above, so the graph sits exactly over the columns.
-const LABEL_W = 92
 const ROW_H = 18
+// At least two rows stay in view (two rows, the 1 px between them and the
+// grid's 1 px padding top and bottom); the rest scroll.
+const SCROLL_MIN_H = 2 * ROW_H + 3
+const AXIS_H = 14
+// The least height the rows need, with the 8 px gap and the dates under
+// them. The Scenes tab keeps at least this much for them, so on a window too
+// short for it the tab scrolls instead of the rows running into what follows.
+export const ROWS_MIN_H = SCROLL_MIN_H + 8 + AXIS_H
 
-export function SatelliteRows({ rows, buckets, counts, range, onRange, selectedRowIds, onRowClick, floor }: Props) {
+export function SatelliteRows({ rows, buckets, counts, range, onRange, onOpen, onChoose, floor, labelWidth }: Props) {
   const gridRef = useRef<HTMLDivElement>(null)
   const dragStart = useRef<number | null>(null)
   const n = buckets.length
@@ -78,36 +99,55 @@ export function SatelliteRows({ rows, buckets, counts, range, onRange, selectedR
 
   const sel = range ?? [0, n - 1]
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex gap-2">
-        <div className="flex flex-col gap-px pt-px" style={{ width: LABEL_W }}>
-          {rows.map((row) => {
-            const chosen = selectedRowIds.includes(row.id)
-            const dimmed = selectedRowIds.length > 0 && !chosen
-            return (
+    <div className="flex min-h-0 flex-col gap-2">
+      <div className="flex gap-2 overflow-y-auto overscroll-contain" style={{ minHeight: SCROLL_MIN_H }}>
+        <div className="flex shrink-0 flex-col gap-px pt-px font-mono text-[10px]" style={{ width: labelWidth }}>
+          {rows.map((row) => (
+            <div
+              key={row.key}
+              className={["flex items-center gap-1 transition-opacity", row.dimmed ? "opacity-45" : ""].join(" ")}
+              style={{ height: ROW_H }}
+            >
               <button
-                key={row.id}
                 type="button"
-                onClick={() => onRowClick(row.id)}
-                aria-pressed={chosen}
+                onClick={() => onChoose(row.key)}
+                aria-pressed={row.chosen}
+                aria-label={row.chosen ? `Stop choosing ${row.label}` : `Choose ${row.label}`}
+                title={row.chosen ? `Stop choosing ${row.label}` : `Choose ${row.label} (several can be chosen)`}
+                className="grid size-3.5 shrink-0 place-items-center rounded-[2px] hover:bg-surface-inset focus-visible:outline-2 focus-visible:outline-focus-ring"
+              >
+                <span
+                  aria-hidden
+                  className={[
+                    "block size-2 rounded-[1px]",
+                    row.chosen ? "ring-[1.5px] ring-fg ring-offset-1 ring-offset-surface-raised" : "",
+                  ].join(" ")}
+                  style={{ backgroundColor: row.color }}
+                />
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpen(row.key)}
                 title={
-                  chosen
-                    ? `Stop showing ${row.label}`
-                    : selectedRowIds.length
-                      ? `Show ${row.label} too`
-                      : `Show only ${row.label}`
+                  row.expandable
+                    ? `Open ${row.label}`
+                    : row.chosen
+                      ? `Stop choosing ${row.label}`
+                      : `Choose ${row.label}`
                 }
                 className={[
-                  "flex items-center gap-1.5 truncate text-left font-mono text-[10px] transition-opacity hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring",
-                  dimmed ? "text-fg-muted opacity-45" : chosen ? "text-fg" : "text-fg-muted",
+                  "flex min-w-0 flex-1 items-center gap-1 rounded-[2px] text-left whitespace-nowrap hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus-ring",
+                  row.chosen ? "text-fg" : "text-fg-muted",
                 ].join(" ")}
-                style={{ height: ROW_H }}
               >
-                <span className="size-2 shrink-0 rounded-[1px]" style={{ backgroundColor: row.color }} aria-hidden />
-                <span className="truncate">{row.label}</span>
+                <span className="min-w-0 truncate">{row.label}</span>
+                <span className="ml-auto pl-1 text-fg-faint tabular-nums">{row.count.toLocaleString("en")}</span>
+                <span aria-hidden className="grid w-2.5 shrink-0 place-items-center text-fg-faint">
+                  {row.expandable && <IconChevronRight size={10} stroke={2.25} />}
+                </span>
               </button>
-            )
-          })}
+            </div>
+          ))}
         </div>
         <div
           ref={gridRef}
@@ -123,7 +163,7 @@ export function SatelliteRows({ rows, buckets, counts, range, onRange, selectedR
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
           onKeyDown={onKeyDown}
-          className="relative grid flex-1 cursor-crosshair touch-none select-none rounded-md bg-surface-inset p-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+          className="relative grid min-w-0 flex-1 cursor-crosshair touch-none select-none rounded-md bg-surface-inset p-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
           style={{
             gridTemplateColumns: `repeat(${Math.max(1, n)}, minmax(0, 1fr))`,
             gridTemplateRows: `repeat(${Math.max(1, rows.length)}, ${ROW_H}px)`,
@@ -134,14 +174,13 @@ export function SatelliteRows({ rows, buckets, counts, range, onRange, selectedR
             buckets.map((bucket, ci) => {
               const c = counts[ri]?.[ci] ?? 0
               const inSel = !range || (ci >= range[0] && ci <= range[1])
-              const dimmed = selectedRowIds.length > 0 && !selectedRowIds.includes(row.id)
               return (
                 <div
-                  key={`${row.id}-${ci}`}
+                  key={`${row.key}-${ci}`}
                   className="rounded-[1px] transition-opacity"
                   style={{
                     backgroundColor: c > 0 ? row.color : undefined,
-                    opacity: strength(c) * (inSel ? 1 : 0.35) * (dimmed ? 0.35 : 1),
+                    opacity: strength(c) * (inSel ? 1 : 0.35) * (row.dimmed ? 0.35 : 1),
                   }}
                   title={`${row.label} · ${bucket} · ${c.toLocaleString("en")} ${c === 1 ? "scene" : "scenes"}`}
                 />
@@ -158,8 +197,8 @@ export function SatelliteRows({ rows, buckets, counts, range, onRange, selectedR
         </div>
       </div>
       {n > 0 && (
-        <div className="flex" aria-hidden>
-          <div style={{ width: LABEL_W + 8 }} />
+        <div className="flex shrink-0 gap-2" style={{ height: AXIS_H }} aria-hidden>
+          <div className="shrink-0 font-mono text-[10px]" style={{ width: labelWidth }} />
           <div className="flex flex-1 justify-between font-mono text-[9.5px] text-fg-muted">
             <span>{buckets[0]}</span>
             {n > 2 && <span>{buckets[Math.floor((n - 1) / 2)]}</span>}

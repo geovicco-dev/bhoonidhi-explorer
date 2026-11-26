@@ -479,7 +479,7 @@ export function CommandPalette() {
         data-map-inset={expanded ? "left" : undefined}
         className={[
           "bx-surface-strong bx-halo-soft pointer-events-auto flex flex-col overflow-hidden rounded-xl text-fg",
-          expanded ? "max-h-[min(32rem,calc(100vh-2rem))] shadow-2xl" : "shadow-lg",
+          expanded ? "max-h-[min(36rem,calc(100vh-2rem))] shadow-2xl" : "shadow-lg",
         ].join(" ")}
       >
         {/* Input row: tile mark (the spinner while the agent works) or the command icon, breadcrumb, query with ghost text, send (open only) or stop. */}
@@ -748,11 +748,12 @@ export function CommandPalette() {
                     )}
                   </div>
                   {/* Both tabs get the same height, so switching between them
-                      never resizes the panel. 25rem is what the Scenes tab
-                      needs: the date overview sits above the rows, and with
-                      less the scene cards' dates start below the fold. On a
-                      short window it shrinks with the panel. */}
-                  <div className="flex min-h-0 flex-col" style={{ flex: "0 1 25rem" }}>
+                      never resizes the panel. 29rem is what the Scenes tab
+                      needs: the date overview, the breadcrumb, about five
+                      rows and the scene strip, all without scrolling the
+                      tab. On a short window it shrinks with the panel, and
+                      the rows give up their height first. */}
+                  <div className="flex min-h-0 flex-col" style={{ flex: "0 1 29rem" }}>
                     {tab === "conversation" ? <Transcript /> : <ScenesView />}
                   </div>
                 </>

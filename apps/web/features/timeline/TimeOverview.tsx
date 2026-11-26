@@ -5,8 +5,8 @@ import { IconX } from "@tabler/icons-react"
 import { axisTicks, DAY_MS, formatDay, spanText, stepLabel, type Overview } from "./aggregate"
 
 // The overview at the top of the Scenes tab: the scenes' dates as a filled
-// graph (the chosen satellites together, or every satellite when none are
-// chosen), with a window over it that chooses the dates. Drag either handle
+// graph (the chosen rows together, or every scene when none are chosen),
+// with a window over it that chooses the dates. Drag either handle
 // to change one end, drag the window to move it, drag anywhere else to draw a
 // new one, double-click for all dates. The handles are sliders for the
 // keyboard: arrows move one period (Shift for ten), Home and End go to the
@@ -23,6 +23,8 @@ type Props = {
   // The chosen dates, [first ms, last ms] both inclusive, or null for all.
   range: Range | null
   onRange: (range: Range | null) => void
+  // The rows' name column, so the graph sits exactly over the rows' columns.
+  labelWidth: string
 }
 
 type Drag = { mode: "start" | "end" | "move" | "new"; anchor: number; from: Range; x0: number; moved: boolean }
@@ -40,7 +42,7 @@ const COLORS = {
 const floorDay = (ms: number) => Math.floor(ms / DAY_MS) * DAY_MS
 const stepMs = { day: DAY_MS, week: 7 * DAY_MS, month: 30 * DAY_MS, year: 365 * DAY_MS }
 
-export function TimeOverview({ data, range, onRange }: Props) {
+export function TimeOverview({ data, range, onRange, labelWidth }: Props) {
   const [lo, hi] = data.extent
   const span = Math.max(DAY_MS, hi - lo)
   const trackRef = useRef<HTMLDivElement>(null)
@@ -176,7 +178,10 @@ export function TimeOverview({ data, range, onRange }: Props) {
 
   return (
     <div className="flex gap-2" style={COLORS}>
-      <div className="flex w-[92px] shrink-0 flex-col justify-center gap-px font-mono leading-[14px]">
+      <div
+        className="flex shrink-0 flex-col justify-center gap-px font-mono text-[10px] leading-[14px]"
+        style={{ width: labelWidth }}
+      >
         <span className="text-[10.5px] font-semibold text-fg">{formatDay(win[0])}</span>
         <span className="text-[10.5px] font-semibold text-fg">{formatDay(win[1] - DAY_MS)}</span>
         <span className="flex items-center gap-1 text-[10px] text-fg-muted">
