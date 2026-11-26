@@ -1,8 +1,9 @@
 # Bhoonidhi Explorer
 
 Find satellite scenes in ISRO's Bhoonidhi archive by asking in plain words or
-by filling in a query, see them on a map, and leave with the `bhd` commands
-that download them.
+by filling in a query, see them on a map, browse a large result by satellite,
+then by sensor and product, and leave with the `bhd` commands that download
+them.
 
 > **Unofficial and metadata-only.** Bhoonidhi Explorer is not
 > affiliated with or endorsed by ISRO or NRSC. It stores scene footprints and
