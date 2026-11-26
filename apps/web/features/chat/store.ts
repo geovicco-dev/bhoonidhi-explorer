@@ -10,6 +10,7 @@ import {
 import type { AgentEvent, Scene, SearchResult } from "./types"
 // aggregate.ts imports only types, so this is not a cycle.
 import { parseSceneDate } from "@/features/timeline/aggregate"
+import { matchesFilter, sceneKeys } from "@/features/timeline/hierarchy"
 import { areaAfter, areaFromTurns } from "@/features/aoi/agent"
 import { sameAoi } from "@/features/aoi/geo"
 import { useAoiStore } from "@/features/aoi/store"
@@ -68,8 +69,9 @@ type ChatState = {
   // satelliteFilter; out-of-range scenes are removed, not dimmed.
   timeRange: [number, number] | null
   setTimeRange: (range: [number, number] | null) => void
-  // The chosen Scene.satellite codes; empty shows every satellite.
-  // AND-combined with timeRange.
+  // The chosen rows of the Scenes tab, as keys: a satellite code ("R2A"), or
+  // a satellite's sensor or product ("R2A/LISS3", "R2A/LISS3/L2"). Empty
+  // shows every scene. AND-combined with timeRange.
   satelliteFilter: string[]
   setSatelliteFilter: (sats: string[]) => void
   // Scene whose card is open and whose quicklook is draped on the map, or null.
@@ -117,8 +119,9 @@ export function visibleScenes(
   satellites: string[],
 ): Scene[] {
   return scenes.filter((s) => {
+    // Rows are paths (satellite, satellite/sensor, satellite/sensor/product);
     // "Unknown" is the timeline's row for scenes without a satellite.
-    if (satellites.length && !satellites.includes(s.satellite ?? "Unknown")) return false
+    if (!matchesFilter(s, satellites)) return false
     if (timeRange) {
       const ms = parseSceneDate(s.date_of_pass)
       // Undated scenes are never hidden by a time filter.
@@ -238,7 +241,7 @@ const ALL_SATELLITES: string[] = []
 // a stale choice cannot leave the tab empty with nothing marked as chosen.
 function savedSatellites(saved: string[] | string | null | undefined, scenes: Scene[]): string[] {
   const codes = Array.isArray(saved) ? saved : saved ? [saved] : []
-  const present = new Set(scenes.map((s) => s.satellite ?? "Unknown"))
+  const present = new Set(scenes.flatMap((s) => sceneKeys(s)))
   const kept = codes.filter((c) => present.has(c))
   return kept.length ? kept : ALL_SATELLITES
 }

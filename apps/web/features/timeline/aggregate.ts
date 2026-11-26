@@ -1,10 +1,12 @@
 import type { Scene } from "@/features/chat/types"
+import { matchesFilter } from "./hierarchy"
 
-// Two views of a result's dates. `overview` counts every scene, all
-// satellites together, across the whole result: the graph at the top of the
-// Scenes tab. `aggregateScenes` is the satellite × period matrix below it; it
-// covers the chosen dates only and uses a finer step as the window shrinks
-// (years, months, weeks, then days).
+// Two views of a result's dates. `overview` counts the scenes of the chosen
+// rows (every scene when none are chosen) across the whole result: the graph
+// at the top of the Scenes tab. `aggregateScenes` sets the periods of the
+// rows below it and each satellite's colour; it covers the chosen dates only
+// and uses a finer step as the window shrinks (years, months, weeks, then
+// days).
 
 export interface TimelineRow {
   id: string
@@ -15,7 +17,6 @@ export interface TimelineRow {
 interface Aggregation {
   rows: TimelineRow[]
   buckets: string[]
-  counts: number[][]
   /** [startMs, endMs) for each bucket, index-aligned with `buckets`. */
   bucketBounds: Array<[number, number]>
   /** The dates the matrix covers: [first ms, last ms], both inclusive. */
@@ -45,7 +46,7 @@ const PALETTE: ReadonlyArray<readonly [light: string, dark: string]> = [
 
 // The `selection` token leads with the ISRO display name, so its first segment
 // is the label without a hardcoded code map.
-function readableSatellite(scene: Scene): string {
+export function readableSatellite(scene: Scene): string {
   const seg = (scene.selection ?? "").split("_")[0]
   return seg || scene.satellite || "Unknown"
 }
@@ -147,18 +148,10 @@ export function aggregateScenes(
     cursor = end
   }
 
-  const bucketIndexFor = (ms: number): number => {
-    // Linear scan; n is small.
-    for (let i = 0; i < bounds.length; i++) {
-      const b = bounds[i]!
-      if (ms >= b[0] && ms < b[1]) return i
-    }
-    return bounds.length - 1
-  }
-
-  // Row id is the raw satellite code (stable for click-to-filter); the label
-  // is the readable name. Every satellite keeps its row whatever the dates, so
-  // rows and colours stay put while the window moves.
+  // Row id is the raw satellite code, the first part of every row key below
+  // it; the label is the readable name. Every satellite keeps its colour
+  // whatever the dates, so colours stay put while the window moves. The
+  // rows' counts come from rowCounts (hierarchy.ts), for whichever rows show.
   const rowOrder: string[] = []
   const rowLabel: Record<string, string> = {}
   for (const { scene } of dated) {
@@ -168,14 +161,6 @@ export function aggregateScenes(
       rowLabel[sat] = readableSatellite(scene)
     }
   }
-  const rowIndex: Record<string, number> = Object.fromEntries(rowOrder.map((s, i) => [s, i]))
-
-  const counts: number[][] = rowOrder.map(() => new Array(bounds.length).fill(0))
-  for (const { scene, ms } of dated) {
-    if (ms < minMs || ms > maxMs) continue
-    const ri = rowIndex[scene.satellite ?? "Unknown"]!
-    counts[ri]![bucketIndexFor(ms)]! += 1
-  }
 
   const rows: TimelineRow[] = rowOrder.map((sat, i) => ({
     id: sat,
@@ -183,14 +168,14 @@ export function aggregateScenes(
     color: PALETTE[i % PALETTE.length]![theme === "light" ? 0 : 1],
   }))
 
-  return { rows, buckets: labels, counts, bucketBounds: bounds, extent: [minMs, maxMs] }
+  return { rows, buckets: labels, bucketBounds: bounds, extent: [minMs, maxMs] }
 }
 
 export interface Overview {
   /** From the first scene's day to the end of the last scene's day: [start, end). */
   extent: [number, number]
-  /** Scenes of the chosen satellites (every satellite when none are chosen)
-   *  per period, index-aligned with `bounds`. */
+  /** Scenes of the chosen rows (every scene when none are chosen) per
+   *  period, index-aligned with `bounds`. */
   counts: number[]
   bounds: Array<[number, number]>
   step: Granularity
@@ -203,9 +188,7 @@ export interface Overview {
 export function overview(scenes: Scene[], satellites: string[] = []): Overview | null {
   const dated = datedScenes(scenes)
   if (dated.length === 0) return null
-  const counted = satellites.length
-    ? dated.filter(({ scene }) => satellites.includes(scene.satellite ?? "Unknown"))
-    : dated
+  const counted = satellites.length ? dated.filter(({ scene }) => matchesFilter(scene, satellites)) : dated
   const first = Math.min(...dated.map((x) => x.ms))
   const last = Math.max(...dated.map((x) => x.ms))
   const spanDays = (last - first) / DAY_MS
