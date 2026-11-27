@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- The agent gives the real number of scenes a search matches, the oldest
+  scene's date and the count for each satellite and sensor, where it
+  described only the newest 1,000. It does not search every satellite over
+  all of India or everywhere: it asks for a satellite, a sensor or a smaller
+  area instead, and the query form flags such a search the same way.
+
 ## [0.3.3] - 2026-11-26
 
 ### Added
