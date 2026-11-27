@@ -58,32 +58,36 @@ ITEM = {
 
 
 class Seen(list):
-    """The search bodies a fake catalogue received; `oldest` holds the
-    oldest-first lookups a capped search adds, kept apart so tests of the
+    """The search bodies a fake catalogue received; `counts` holds the
+    /aggregate requests a capped search adds, kept apart so tests of the
     main search still read it at [0]."""
 
-    oldest: list[dict]
+    counts: list[dict]
 
 
-OLDEST = {"properties": {"DOP": "1997-01-03", "datetime": "1997-01-03T00:00:00Z"}}
+# The fake /aggregate's answer for a capped search: every match counted.
+COUNTED = {"aggregations": [
+    {"name": "total_count", "value": 5432},
+    {"name": "datetime_min", "value": "1997-01-03T00:00:00Z"},
+    {"name": "collection_frequency", "buckets": [{"key": "sentinel-2b-msi", "frequency": 5432}]},
+]}
 
 
-def _fake(monkeypatch, features=None, more=False, oldest_status=200):
+def _fake(monkeypatch, features=None, more=False, count_status=200):
     """A fake catalogue. Returns the search bodies it received (the level
     sampling done while loading the collections is left out)."""
     seen = Seen()
-    seen.oldest = []
+    seen.counts = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/collections":
             assert request.url.params.get("limit") == "1000"
             return httpx.Response(200, json=COLLECTIONS)
+        if request.url.path == "/aggregate":
+            seen.counts.append(json.loads(request.content))
+            return httpx.Response(count_status, json=COUNTED if count_status == 200 else {"detail": "too long"})
         if request.url.path == "/search":
             body = json.loads(request.content)
-            # A capped search's lookup of its oldest match sorts oldest first.
-            if (body.get("sortby") or [{}])[0].get("direction") == "asc":
-                seen.oldest.append(body)
-                return httpx.Response(oldest_status, json={"features": [OLDEST], "links": []})
             # Loading the catalogue asks each collection for its SELECTION
             # values only; a real search asks for the full item fields.
             if body.get("fields", {}).get("exclude") == ["geometry", "assets", "links"]:
@@ -229,61 +233,130 @@ def test_circle_is_searched_as_a_circle(fake_stac):
         assert abs(2 * 6371.0088 * math.asin(math.sqrt(a)) - 5.8) < 0.01
 
 
-def test_more_than_the_limit_says_so(monkeypatch):
-    _fake(monkeypatch, features=[{**ITEM, "id": f"SEN2B_MSI_{n}"} for n in range(3)], more=True)
-    out = asyncio.run(tools.search_catalog("2024-01-01", "2024-01-31", 1, 1, 2, 2))
-    # The count is what came back, marked as not all there is.
-    assert out["more_available"] is True and out["count"] == "3+" and "total" not in out
-    assert "newest 3 " in out["note"]
-
-
-def test_a_capped_search_finds_its_oldest_match(monkeypatch):
-    # "How far back does it go?": the newest 1,000 cannot show the start, so the
-    # same search is asked again, oldest first, for one scene's date.
+def test_more_than_the_limit_is_counted_by_the_stac_api(monkeypatch):
+    # "How far back does it go?" and "how many": the newest 1,000 cannot say,
+    # so the STAC API counts every match of the same search.
     seen = _fake(monkeypatch, features=[{**ITEM, "id": f"SEN2B_MSI_{n}"} for n in range(3)], more=True)
     out = asyncio.run(tools.search_catalog("1990-01-01", "2024-01-31", 1, 1, 2, 2, satellite="Sentinel-2B",
                                            availability="Ready"))
-    assert len(seen) == 1 and len(seen.oldest) == 1
-    main, lookup = seen[0], seen.oldest[0]
-    assert lookup["limit"] == 1
-    assert lookup["sortby"] == [{"field": "properties.datetime", "direction": "asc"}]
-    # The same scenes are asked for: area, dates, collections and filters.
+    assert len(seen) == 1 and len(seen.counts) == 1
+    main, count = seen[0], seen.counts[0]
+    # The same scenes are counted: area, dates, collections and filters.
     for key in ("bbox", "datetime", "collections", "filter", "filter-lang"):
-        assert lookup[key] == main[key]
-    assert out["oldest_matching"] == "1997-01-03"
-    assert "The oldest scene that matches is from 1997-01-03." in out["note"]
-    # What the map and the query form show is unchanged.
-    assert out["oldest"] == out["newest"] == "2024-01-01"
-    # The model reads the oldest shown under its own name.
+        assert count[key] == main[key]
+    assert count["aggregations"] == ["total_count", "datetime_min", "collection_frequency"]
+    assert out["more_available"] is True and out["returned"] == 3
+    assert out["count"] == out["total"] == 5432
+    assert out["oldest"] == "03-Jan-1997" and out["newest"] == "2024-01-01"
+    assert out["by_satellite"] == {"Sentinel-2B MSI": 5432}
+    # Availability is known only for the scenes returned, and says so.
+    assert "availability_summary" not in out and out["availability_of_newest"] == {"Archived": 3}
+    assert "newest 3 scenes" in out["note"]
     for_model = json.loads(tools.for_model("search_catalog", out))
-    assert for_model["oldest_shown"] == "2024-01-01" and "oldest" not in for_model
-    assert for_model["oldest_matching"] == "1997-01-03"
+    assert for_model["oldest"] == "03-Jan-1997" and "oldest_shown" not in for_model
 
 
-def test_a_search_that_is_not_capped_asks_once(monkeypatch):
+def test_a_search_that_is_not_capped_is_not_counted_again(monkeypatch):
     seen = _fake(monkeypatch)
     out = asyncio.run(tools.search_catalog("2024-01-01", "2024-01-31", 1, 1, 2, 2))
-    assert len(seen) == 1 and seen.oldest == []
-    assert "oldest_matching" not in out
+    assert len(seen) == 1 and seen.counts == []
+    assert out["count"] == out["total"] == 1 and "availability_summary" in out
     assert json.loads(tools.for_model("search_catalog", out))["oldest"] == "2024-01-01"
 
 
-def test_a_failed_oldest_lookup_leaves_the_search_as_it_was(monkeypatch):
+def test_a_count_the_stac_api_cannot_make_pushes_back(monkeypatch):
     seen = _fake(monkeypatch, features=[{**ITEM, "id": f"SEN2B_MSI_{n}"} for n in range(3)], more=True,
-                 oldest_status=500)
+                 count_status=400)
     out = asyncio.run(tools.search_catalog("2024-01-01", "2024-01-31", 1, 1, 2, 2))
-    assert len(seen.oldest) == 1
-    assert out["status"] == "ok" and out["count"] == "3+" and "oldest_matching" not in out
-    assert "oldest scene that matches" not in out["note"]
+    assert len(seen.counts) == 1
+    assert out["status"] == "too_broad" and "scenes" not in out
+    assert "Name a satellite or a sensor" in out["error"]
 
 
-def test_the_query_form_search_makes_no_oldest_lookup(monkeypatch):
-    # The query form shares run_search; only the chat's tool asks for the oldest match.
+def test_novasar_all_gets_no_row_beside_its_named_product(monkeypatch):
+    # The live STAC API over Gwalior in 2025 files the same 20 NovaSAR scenes
+    # under "20m 2-Pol ScanSAR" and under "All"; its total counts them once.
+    from bhoonidhi_api.names import Collection
+
+    by_id = {
+        "novasar-1-sar-20m-2pol-scansar": Collection("novasar-1-sar-20m-2pol-scansar", "novasar-1",
+                                                     "Novasar-1", "SAR (20m 2-Pol ScanSAR)"),
+        "novasar-1-sar-all": Collection("novasar-1-sar-all", "novasar-1", "Novasar-1", "SAR (All)"),
+        "sentinel-2b-msi": Collection("sentinel-2b-msi", "sentinel-2b", "Sentinel-2B", "MSI"),
+    }
+
+    async def stac(method, path, json=None, timeout=60):
+        assert path == "/aggregate"
+        return {"aggregations": [
+            {"name": "total_count", "value": 30},
+            {"name": "datetime_min", "value": "2025-01-02T00:00:00Z"},
+            {"name": "collection_frequency", "buckets": [
+                {"key": "novasar-1-sar-20m-2pol-scansar", "frequency": 20},
+                {"key": "novasar-1-sar-all", "frequency": 20},
+                {"key": "sentinel-2b-msi", "frequency": 10},
+            ]},
+        ]}
+
+    monkeypatch.setattr(tools, "_stac", stac)
+    out = asyncio.run(tools._count_matches({"collections": list(by_id)}, by_id))
+    assert out is not None
+    assert out["by_satellite"] == {"Novasar-1 SAR (20m 2-Pol ScanSAR)": 20, "Sentinel-2B MSI": 10}
+
+    # With no named NovaSAR product in the search, "All" is the only place
+    # its scenes are counted.
+    async def only_all(method, path, json=None, timeout=60):
+        return {"aggregations": [
+            {"name": "total_count", "value": 20},
+            {"name": "collection_frequency", "buckets": [{"key": "novasar-1-sar-all", "frequency": 20}]},
+        ]}
+
+    monkeypatch.setattr(tools, "_stac", only_all)
+    out = asyncio.run(tools._count_matches({"collections": ["novasar-1-sar-all"]}, by_id))
+    assert out is not None
+    assert out["by_satellite"] == {"Novasar-1 SAR (All)": 20}
+
+
+def test_an_unreachable_count_leaves_the_newest_shown(monkeypatch):
+    seen = _fake(monkeypatch, features=[{**ITEM, "id": f"SEN2B_MSI_{n}"} for n in range(3)], more=True,
+                 count_status=500)
+    out = asyncio.run(tools.search_catalog("2024-01-01", "2024-01-31", 1, 1, 2, 2))
+    assert len(seen.counts) == 1
+    assert out["status"] == "ok" and out["count"] == "3+" and "total" not in out
+    assert "newest 3 " in out["note"]
+    # The model reads the oldest shown under its own name.
+    for_model = json.loads(tools.for_model("search_catalog", out))
+    assert for_model["oldest_shown"] == "2024-01-01" and "oldest" not in for_model
+
+
+def test_the_query_form_search_is_counted_too(monkeypatch):
     seen = _fake(monkeypatch, features=[{**ITEM, "id": f"SEN2B_MSI_{n}"} for n in range(3)], more=True)
     cat = asyncio.run(tools.catalogue())
-    out = asyncio.run(tools.run_search(cat, [(tools.date(2024, 1, 1), tools.date(2024, 1, 31))], None,
-                                       collections=None))
-    assert out["more_available"] is True and seen.oldest == [] and "oldest_matching" not in out
+    out = asyncio.run(tools.run_search(cat, [(tools.date(2024, 1, 1), tools.date(2024, 1, 31))],
+                                       {"bbox": [1, 1, 2, 2]}, collections=None))
+    assert len(seen.counts) == 1 and out["count"] == 5432
+
+
+@pytest.mark.parametrize("area", [{}, {"minx": 68.0, "miny": 6.0, "maxx": 97.5, "maxy": 37.5}])
+def test_every_satellite_over_india_or_everywhere_is_refused_before_searching(monkeypatch, area):
+    seen = _fake(monkeypatch)
+    out = asyncio.run(tools.search_catalog("2024-01-01", "2024-01-31", **area))
+    assert out["status"] == "too_broad" and seen == [] and seen.counts == []
+    assert "Name a satellite or a sensor" in out["error"]
+
+
+def test_a_named_satellite_or_a_smaller_area_is_searched(monkeypatch):
+    seen = _fake(monkeypatch)
+    # Half of India with every satellite counted in 28 s on the public STAC API.
+    half = asyncio.run(tools.search_catalog("2024-01-01", "2024-01-31", 68.0, 21.0, 90.0, 32.0))
+    everywhere = asyncio.run(tools.search_catalog("2024-01-01", "2024-01-31", satellite="Sentinel-2B"))
+    assert half["status"] == everywhere["status"] == "ok" and len(seen) == 2
+
+
+def test_area_sizes():
+    assert 2.6e6 < tools.area_km2({"bbox": [68.0, 21.0, 90.0, 32.0]}) < 2.8e6
+    assert tools.too_wide(None) and tools.too_wide({"bbox": [68.0, 6.0, 97.5, 37.5]})
+    # A 100 km circle, the largest the tools take.
+    assert not tools.too_wide({"intersects": tools.circle_polygon(78.2, 26.2, 100)})
 
 
 def test_a_scene_filed_under_two_products_comes_back_once(monkeypatch):
@@ -801,3 +874,78 @@ def test_a_suffixless_product_the_portal_dropped_is_found_in_the_catalogue(fake_
     out = asyncio.run(tools._with_unlisted_bare_products([awifs, msi]))
     assert out[0].products == ("ResourceSat-2A_AWIFS_L2", "ResourceSat-2A_AWIFS")
     assert out[1] == msi
+
+
+@pytest.mark.parametrize("area", [None, {"kind": "box", "west": 68.0, "south": 6.0, "east": 97.5, "north": 37.5}])
+def test_the_query_form_flags_every_satellite_over_india_or_everywhere(fake_stac, area):
+    from bhoonidhi_api import query
+
+    cat = asyncio.run(tools.catalogue())
+    dates = {"from": "2024-01-01", "to": "2024-01-31"}
+    checked = query.check({"dates": dates, "area": area}, cat)
+    assert not checked.ok and [p["field"] for p in checked.problems] == ["items"]
+    # A satellite, or a smaller area, is searched.
+    assert query.check({"dates": dates, "area": area, "items": [{"satellite": "Sentinel-2B"}]}, cat).ok
+    gwalior = {"kind": "box", "west": 77.9, "south": 26.0, "east": 78.4, "north": 26.4}
+    assert query.check({"dates": dates, "area": gwalior}, cat).ok
+
+
+def test_a_query_turn_answer_gives_the_real_count():
+    from bhoonidhi_api import query
+
+    result = {"status": "ok", "scenes": [{}] * 3, "count": 5432, "oldest": "03-Jan-1997", "newest": "01-Jan-2024",
+              "by_satellite": {"Sentinel-2B MSI": 5432}, "availability_of_newest": {"Archived": 3}}
+    assert query.answer(result) == (
+        "5,432 scenes, 03-Jan-1997 to 01-Jan-2024: Sentinel-2B MSI 5,432. Of the newest 3: 3 Archived.")
+    assert query.answer({"status": "too_broad", "error": tools.TOO_BIG_TO_COUNT}) == tools.TOO_BIG_TO_COUNT
+
+
+def test_the_download_note_gives_every_scene_the_query_found(fake_stac):
+    from bhoonidhi_api import query
+
+    cat = asyncio.run(tools.catalogue())
+    q = {"dates": {"from": "2024-01-01", "to": "2024-01-31"}, "items": [{"satellite": "Sentinel-2B"}],
+         "area": {"kind": "box", "west": 77.9, "south": 26.0, "east": 78.4, "north": 26.4}}
+    ids = [f"s{i}" for i in range(1000)]
+    assert "This query found 13,909 scenes, too many to list" in query.bhd_steps(q, ids, cat, 13909)["note"]
+    # Without a total, the scenes it returned are all there is to go on.
+    assert "This query found 1,000 scenes" in query.bhd_steps(q, ids, cat)["note"]
+    few = query.bhd_steps(q, ["a", "b"], cat, 2)
+    assert "--select a,b" in few["steps"][2]["command"] and "only the 2 scenes" in few["note"]
+
+
+def test_a_saved_search_runs_again_through_its_own_tool(monkeypatch):
+    from bhoonidhi_api import main, query
+
+    seen: dict = {}
+
+    async def search_catalog(**kwargs):
+        seen["agent"] = kwargs
+        return {"status": "ok", "scenes": []}
+
+    async def run(q, cat):
+        seen["form"] = q
+        return {"status": "ok", "scenes": []}
+
+    async def catalogue():
+        return []
+
+    monkeypatch.setattr(tools, "search_catalog", search_catalog)
+    monkeypatch.setattr(tools, "catalogue", catalogue)
+    monkeypatch.setattr(query, "run", run)
+    args = {"start_date": "2025-01-01", "end_date": "2025-12-31", "lat": 26.2, "lon": 78.2, "radius_km": 25}
+    asyncio.run(main.scenes_rerun(main.RerunBody(tool="search_catalog", arguments=args)))
+    assert seen["agent"] == args
+    form = {"dates": {"from": "2025-01-01", "to": "2025-12-31"}, "items": [{"satellite": "Sentinel-2B"}]}
+    asyncio.run(main.scenes_rerun(main.RerunBody(tool="query_catalog", arguments=form)))
+    assert seen["form"] == form
+
+
+def test_a_saved_search_with_arguments_the_tool_does_not_take_is_refused():
+    from fastapi import HTTPException
+
+    from bhoonidhi_api import main
+
+    with pytest.raises(HTTPException) as refused:
+        asyncio.run(main.scenes_rerun(main.RerunBody(tool="search_catalog", arguments={"no_such": 1})))
+    assert refused.value.status_code == 422

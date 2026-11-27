@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import geocode, limits, model_queue, models, query, sessions, tools
+from . import geocode, limits, model_queue, models, query, sessions, tools, whole
 from .agent import run_agent
 from .config import settings
 
@@ -318,6 +318,8 @@ class QueryTurn(BaseModel):
 class BhdBody(BaseModel):
     query: dict[str, Any]
     scene_ids: list[str] = Field(default_factory=list)
+    # Every scene the query found, when it found more than it returned.
+    total: int | None = None
 
 
 class SceneBody(BaseModel):
@@ -395,7 +397,78 @@ async def query_turn(cid: str, body: QueryTurn, x_client_id: str | None = Header
 @app.post("/query/bhd")
 async def query_bhd(body: BhdBody) -> dict:
     """The `bhd` commands that download the scenes a query found."""
-    return query.bhd_steps(body.query, body.scene_ids, await tools.catalogue())
+    return query.bhd_steps(body.query, body.scene_ids, await tools.catalogue(), body.total)
+
+
+# --- a result's counts and pages, for the Scenes tab -------------------------
+
+
+class ResultRow(BaseModel):
+    # A satellite code, and optionally the exact product values under it.
+    satellite: str
+    selections: list[str] | None = None
+
+
+class ResultSlice(BaseModel):
+    # A result's `search`, as run_search returned it.
+    search: dict[str, Any]
+    # The date window, both ends inclusive (RFC 3339), and the chosen rows:
+    # a scene in any of them matches.
+    start: str | None = None
+    end: str | None = None
+    rows: list[ResultRow] = Field(default_factory=list)
+
+    def narrow(self) -> dict[str, Any]:
+        return {"start": self.start, "end": self.end, "rows": [r.model_dump() for r in self.rows]}
+
+
+class CountsBody(ResultSlice):
+    interval: Literal["year", "month", "week", "day"] = "month"
+
+
+class PageBody(ResultSlice):
+    limit: int = Field(100, ge=1, le=whole.PAGE_MAX)
+    token: str | None = None
+    # Only these scenes, e.g. the ones chosen in a reopened conversation.
+    ids: list[str] | None = Field(None, max_length=whole.PAGE_MAX)
+
+
+@app.post("/scenes/counts", dependencies=[Depends(limits.PAGES)])
+async def scenes_counts(body: CountsBody) -> dict:
+    """How many scenes a result holds, in all, per period and per satellite
+    per period, counted by the STAC API."""
+    try:
+        return await whole.counts(body.search, body.interval, **body.narrow())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/scenes/page", dependencies=[Depends(limits.PAGES)])
+async def scenes_page(body: PageBody) -> dict:
+    """One page of a result's scenes, newest first, with the next page's token."""
+    try:
+        return await whole.page(body.search, body.limit, body.token, body.ids, **body.narrow())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class RerunBody(BaseModel):
+    # The tool a saved turn searched with, and what it was given: the agent's
+    # arguments to search_catalog, or the query form's query.
+    tool: Literal["search_catalog", "query_catalog"]
+    arguments: dict[str, Any]
+
+
+@app.post("/scenes/rerun", dependencies=[Depends(limits.SEARCHES)])
+async def scenes_rerun(body: RerunBody) -> dict:
+    """Run a saved turn's search again, for a reopened conversation; nothing
+    is saved."""
+    if body.tool == "query_catalog":
+        return await query.run(body.arguments, await tools.catalogue())
+    try:
+        return await tools.search_catalog(**body.arguments)
+    except TypeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/scene/handoff")

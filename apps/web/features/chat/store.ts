@@ -5,6 +5,7 @@ import {
   type Conversation,
   type ConversationState,
   type ConversationSummary,
+  type SavedSearch,
   type StoredTurn,
 } from "./stream"
 import type { AgentEvent, Scene, SearchResult } from "./types"
@@ -62,9 +63,11 @@ type ChatState = {
   error: string | null
   // Latest search result's scenes; the single in-memory result layer.
   scenes: Scene[]
-  // True when that search matched more than the scenes returned (the API
-  // returns the newest 1,000 and does not count past them).
+  // True when that search matched more than the scenes returned.
   moreScenes: boolean
+  // The latest search result itself; the Scenes tab asks for the counts and
+  // pages of a result that holds more scenes than it returned.
+  result: SearchResult | null
   // [startMs, endMs] from the density timeline, or null. AND-combined with
   // satelliteFilter; out-of-range scenes are removed, not dimmed.
   timeRange: [number, number] | null
@@ -207,17 +210,39 @@ function plotCard(turn: number, count: number, status: "running" | "succeeded"):
   }
 }
 
-// Rebuild the timeline and the latest scene set from stored turns.
-function replay(turns: StoredTurn[]): { timeline: TimelineItem[]; scenes: Scene[]; moreScenes: boolean } {
+// Rebuild the timeline and the latest scene set from stored turns, with the
+// search that found the latest scenes.
+function replay(turns: StoredTurn[]): {
+  timeline: TimelineItem[]
+  scenes: Scene[]
+  moreScenes: boolean
+  result: SearchResult | null
+  saved: SavedSearch | null
+} {
   let timeline: TimelineItem[] = []
   let scenes: Scene[] = []
   let moreScenes = false
+  let result: SearchResult | null = null
+  let saved: SavedSearch | null = null
   for (const t of turns) {
     timeline.push({ kind: "message", id: nextId(), turn: t.idx, role: "user", text: t.prompt })
     let found: SearchResult | null = null
+    let foundBy: SavedSearch | null = null
+    let query: Record<string, unknown> | null = null
+    let call: Record<string, unknown> | null = null
     for (const e of t.events) {
       timeline = applyEvent(timeline, t.idx, e)
-      if (e.type === "tool_result" && isSearchResult(e.result)) found = e.result
+      if (e.type === "query") query = e.query as unknown as Record<string, unknown>
+      if (e.type === "tool_call") call = e.arguments
+      if (e.type === "tool_result" && isSearchResult(e.result)) {
+        found = e.result
+        foundBy =
+          e.name === "query_catalog" && query
+            ? { tool: "query_catalog", arguments: query }
+            : e.name === "search_catalog" && call
+              ? { tool: "search_catalog", arguments: call }
+              : null
+      }
     }
     // A tool call that never got a result was cut off (stopped or failed).
     timeline = timeline.map((i) =>
@@ -226,10 +251,18 @@ function replay(turns: StoredTurn[]): { timeline: TimelineItem[]; scenes: Scene[
     if (found) {
       scenes = scenesOf(found)
       moreScenes = !!found.more_available
+      result = found
+      saved = foundBy
       if (scenes.length) timeline.push(plotCard(t.idx, scenes.length, "succeeded"))
     }
   }
-  return { timeline, scenes, moreScenes }
+  return { timeline, scenes, moreScenes, result, saved }
+}
+
+// True for a result whose scenes are only its newest few: the Scenes tab
+// asks for its counts and its other pages (features/timeline/whole.ts).
+export function isPaged(result: SearchResult | null): boolean {
+  return !!result?.more_available && !!result.search
 }
 
 // No satellite chosen: every satellite shows. One shared empty list, so
@@ -238,11 +271,13 @@ const ALL_SATELLITES: string[] = []
 
 // Conversations saved before several satellites could be chosen hold one
 // satellite code, or null. Codes with no scene in the results are dropped, so
-// a stale choice cannot leave the tab empty with nothing marked as chosen.
-function savedSatellites(saved: string[] | string | null | undefined, scenes: Scene[]): string[] {
+// a stale choice cannot leave the tab empty with nothing marked as chosen. A
+// result that holds only its newest scenes keeps the saved choice: its rows
+// come from its counts.
+function savedSatellites(saved: string[] | string | null | undefined, scenes: Scene[], paged: boolean): string[] {
   const codes = Array.isArray(saved) ? saved : saved ? [saved] : []
   const present = new Set(scenes.flatMap((s) => sceneKeys(s)))
-  const kept = codes.filter((c) => present.has(c))
+  const kept = paged ? codes : codes.filter((c) => present.has(c))
   return kept.length ? kept : ALL_SATELLITES
 }
 
@@ -251,6 +286,7 @@ const NONE_CHOSEN: string[] = []
 const emptyResults = {
   scenes: [] as Scene[],
   moreScenes: false,
+  result: null,
   timeRange: null,
   satelliteFilter: ALL_SATELLITES,
   selectedSceneId: null,
@@ -403,6 +439,7 @@ export const useChatStore = create<ChatState>((set, get) => {
           timeline: card ? [...s.timeline, card] : s.timeline,
           scenes,
           moreScenes: !!found.more_available,
+          result: found,
           timeRange: null,
           satelliteFilter: ALL_SATELLITES,
           selectedSceneId: null,
@@ -488,6 +525,7 @@ export const useChatStore = create<ChatState>((set, get) => {
           timeline: card ? [...timeline, card] : timeline,
           scenes,
           moreScenes: !!found?.more_available,
+          result: found,
           timeRange: null,
           satelliteFilter: ALL_SATELLITES,
           selectedSceneId: null,
@@ -574,8 +612,10 @@ export const useChatStore = create<ChatState>((set, get) => {
         set({ error: (err as Error).message })
         return
       }
-      const { timeline, scenes, moreScenes } = replay(conv.turns)
+      const { timeline, scenes, moreScenes, result, saved } = replay(conv.turns)
+      const paged = isPaged(result)
       const selected = conv.state.selectedSceneId ?? null
+      const chosenIds = savedChoice(conv.state, scenes, paged)
       // A new scenes array makes the map layer redraw and reframe.
       set({
         conversationId: conv.id,
@@ -585,10 +625,11 @@ export const useChatStore = create<ChatState>((set, get) => {
         error: null,
         scenes,
         moreScenes,
+        result,
         timeRange: conv.state.timeRange ?? null,
-        satelliteFilter: savedSatellites(conv.state.satelliteFilter, scenes),
-        selectedSceneId: selected && scenes.some((sc) => sc.id === selected) ? selected : null,
-        chosenIds: savedChoice(conv.state, scenes),
+        satelliteFilter: savedSatellites(conv.state.satelliteFilter, scenes, paged),
+        selectedSceneId: selected && (scenes.some((sc) => sc.id === selected) || chosenIds.includes(selected)) ? selected : null,
+        chosenIds,
         pendingPlotId: null,
       })
       // The saved area; conversations from before areas were saved rebuild it
@@ -598,6 +639,34 @@ export const useChatStore = create<ChatState>((set, get) => {
       restoreArea(area)
       // With scenes the map fits them; without, it shows the area.
       if (area && !scenes.length) useAoiStore.getState().flyTo()
+      // The saved scenes show at once; the search then runs again, so the tab
+      // shows the whole result and any scenes added since. A result that
+      // holds only its newest scenes needs no second run: its counts and
+      // pages already come live from the STAC API. The dates, rows and
+      // scenes chosen stay. A search that now fails or finds nothing leaves
+      // the saved scenes.
+      if (!saved || paged) return
+      let again: SearchResult
+      try {
+        again = await api.rerun(saved)
+      } catch {
+        return
+      }
+      const now = get()
+      if (now.conversationId !== conv.id || now.result !== result || !isSearchResult(again)) return
+      const found = scenesOf(again)
+      if (!found.length) return
+      const pagedNow = isPaged(again)
+      const state = { satelliteFilter: now.satelliteFilter, chosenIds: now.chosenIds, selectedSceneId: now.selectedSceneId }
+      const kept = savedChoice(state, found, pagedNow)
+      set({
+        scenes: found,
+        moreScenes: !!again.more_available,
+        result: again,
+        satelliteFilter: savedSatellites(now.satelliteFilter, found, pagedNow),
+        chosenIds: kept,
+        selectedSceneId: now.selectedSceneId && kept.includes(now.selectedSceneId) ? now.selectedSceneId : null,
+      })
     },
 
     rename: async (id, title) => {
@@ -623,11 +692,13 @@ export const useChatStore = create<ChatState>((set, get) => {
 })
 
 // The chosen scenes of a saved conversation that are still in its results.
-// Saves from before several could be chosen hold only the open scene.
-function savedChoice(state: ConversationState, scenes: Scene[]): string[] {
+// Saves from before several could be chosen hold only the open scene. A
+// result that holds only its newest scenes keeps every saved choice: the
+// Scenes tab fetches the chosen scenes it does not hold.
+function savedChoice(state: ConversationState, scenes: Scene[], paged: boolean): string[] {
   const ids = new Set(scenes.map((s) => s.id))
   const saved = state.chosenIds ?? (state.selectedSceneId ? [state.selectedSceneId] : [])
-  const kept = saved.filter((id) => ids.has(id))
+  const kept = paged ? saved : saved.filter((id) => ids.has(id))
   return kept.length ? kept : NONE_CHOSEN
 }
 

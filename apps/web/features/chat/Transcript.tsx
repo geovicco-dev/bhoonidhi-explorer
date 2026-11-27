@@ -243,19 +243,22 @@ export function Transcript() {
   const [editing, setEditing] = useState<number | null>(null)
   const [downloads, setDownloads] = useState<Record<number, Download>>({})
 
-  // Per turn: the agent's last search_catalog arguments, and a query turn's scene ids.
+  // Per turn: the agent's last search_catalog arguments, and a query turn's
+  // scene ids and every scene it found.
   const searches = useMemo(() => {
     const args = new Map<number, Record<string, unknown>>()
     const ids = new Map<number, string[]>()
+    const totals = new Map<number, number>()
     for (const i of timeline) {
       if (i.kind !== "tool") continue
       if (i.name === "search_catalog" && i.args) args.set(i.turn, i.args)
       if (i.name === "query_catalog" && i.result && typeof i.result === "object") {
-        const scenes = (i.result as { scenes?: { id?: string }[] }).scenes ?? []
-        ids.set(i.turn, scenes.map((s) => s.id).filter((id): id is string => !!id))
+        const r = i.result as { scenes?: { id?: string }[]; count?: unknown }
+        ids.set(i.turn, (r.scenes ?? []).map((s) => s.id).filter((id): id is string => !!id))
+        if (typeof r.count === "number") totals.set(i.turn, r.count)
       }
     }
-    return { args, ids }
+    return { args, ids, totals }
   }, [timeline])
 
   const editQuery = async (turn: number, query: Query | undefined) => {
@@ -278,7 +281,7 @@ export function Transcript() {
   const download = async (turn: number, query: Query) => {
     setDownloads((d) => ({ ...d, [turn]: { loading: true } }))
     try {
-      const r = await queryApi.bhd(query, searches.ids.get(turn) ?? [])
+      const r = await queryApi.bhd(query, searches.ids.get(turn) ?? [], searches.totals.get(turn))
       setDownloads((d) => ({ ...d, [turn]: r }))
     } catch (err) {
       setDownloads((d) => ({ ...d, [turn]: { error: (err as Error).message } }))

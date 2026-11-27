@@ -62,3 +62,6 @@ QUESTIONS = Limit(6)
 SEARCHES = Limit(30)
 QUICKLOOKS = Limit(60)
 PLACES = Limit(20)
+# The Scenes tab's counts and pages of a result already found: scrolling the
+# strip asks for a page every few seconds.
+PAGES = Limit(120)

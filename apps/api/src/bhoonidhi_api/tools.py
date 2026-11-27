@@ -68,10 +68,20 @@ def throwaway_slug(label: str, key: str) -> str:
     digest = hashlib.sha1(key.encode()).hexdigest()[:6]
     return re.sub(r"[^a-z0-9]+", "-", f"{label}-{digest}".lower()).strip("-")
 
-# Scenes a search asks the catalogue for. When more match, the count reads
-# "N+" and only the newest N are drawn: 1,000, less any scene the catalogue
-# returned twice.
+# Scenes a search returns with its result, newest first: the agent's sample,
+# the scene ids a download hands off, and the first pages of the Scenes tab,
+# which asks for the rest by page (whole.py).
 MAX_SCENES = 1000
+
+# Every satellite and every sensor over an area this large or larger (about
+# India's land area), or with no area, is more than the STAC API can count, so
+# such a search is refused before it runs.
+WHOLE_COUNTRY_KM2 = 3_000_000
+TOO_WIDE = (
+    "This asks for every satellite and every sensor over all of India or everywhere, "
+    "which is more scenes than the STAC API can count. Name a satellite or a sensor "
+    "(for example Sentinel-2 or LISS-3), or choose a smaller area such as a state or a city."
+)
 
 # Items read per collection when learning which product levels it holds.
 # 200 finds 106 of the catalogue's 108 SELECTION values in about 1.5 s over
@@ -111,6 +121,9 @@ _FIELDS = {
     ],
     "exclude": ["links"],
 }
+
+# The keys of a STAC search body that say which scenes match.
+_SEARCH_KEYS = ("collections", "bbox", "intersects", "datetime", "filter", "filter-lang")
 
 
 def today() -> date:
@@ -318,6 +331,24 @@ def _area(
     return None, None
 
 
+def area_km2(area: dict[str, Any]) -> float:
+    """The size of the box around a search area, in km2."""
+    if "bbox" in area:
+        w, s, e, n = area["bbox"]
+    else:
+        ring = area["intersects"]["coordinates"][0]
+        w, e = min(p[0] for p in ring), max(p[0] for p in ring)
+        s, n = min(p[1] for p in ring), max(p[1] for p in ring)
+    r = 6371.0088
+    return r * r * math.radians(e - w) * abs(math.sin(math.radians(n)) - math.sin(math.radians(s)))
+
+
+def too_wide(area: dict[str, Any] | None) -> bool:
+    """True when a search of every satellite over this area must be refused:
+    no area, or one as large as India."""
+    return area is None or area_km2(area) >= WHOLE_COUNTRY_KM2
+
+
 def _availability_label(value: Any) -> str | None:
     """Catalogue items store the enum value ("direct_unavailable"); the app
     uses its label ("Archived"). Map through the SDK's enum."""
@@ -379,6 +410,17 @@ def _no_such_level(resolved: names.Resolved) -> dict[str, Any]:
         "product_levels": held,
         "hint": "Tell the user which levels exist and ask which they want, or search without a level.",
     }
+
+
+def unique_items(features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The items with one copy of each scene, in their order, preferring a
+    named product's copy over the "All" collection's."""
+    unique: dict[Any, dict[str, Any]] = {}
+    for item in features:
+        kept = unique.get(item.get("id"))
+        if kept is None or str(kept.get("collection") or "").endswith("-all"):
+            unique[item.get("id")] = item
+    return list(unique.values())
 
 
 def _item_to_scene(item: dict[str, Any]) -> dict[str, Any]:
@@ -528,6 +570,13 @@ async def search_catalog(
     if problem:
         return {"status": "invalid_request", "error": problem}
 
+    if not (satellite or sensor) and too_wide(area):
+        return {
+            "status": "too_broad",
+            "error": TOO_WIDE,
+            "hint": "Explain this to the user and ask which satellite, sensor or smaller area they want. Do not search.",
+        }
+
     cat = await catalogue()
     resolved = names.resolve(satellite, sensor, cat, product_level)
     if resolved.unknown:
@@ -550,7 +599,6 @@ async def search_catalog(
         covers_area=bool(covers_area),
         product_words=resolved.products,
         reasons_from=resolved.collections,
-        find_oldest=True,
     )
     if resolved.missing_products and result["status"] != "none_cover_the_area":
         result["note"] += (
@@ -573,14 +621,14 @@ async def run_search(
     covers_area: bool = False,
     product_words: list[str] | tuple[str, ...] = (),
     reasons_from: list[names.Collection] | None = None,
-    find_oldest: bool = False,
 ) -> dict[str, Any]:
     """One catalogue search, shared by the agent's search_catalog and the
     query form. `collections` None means every collection. `selections`
     keeps only those exact SELECTION values, except in the collections
     listed in `whole_ids`, which are searched whole: a query can ask for
-    Sentinel-2's Level-2A and every LISS-4 product at once. `find_oldest`
-    adds `oldest_matching` when more scenes match than are returned."""
+    Sentinel-2's Level-2A and every LISS-4 product at once. When more scenes
+    match than are returned, the STAC API counts them all: the result's
+    count, oldest and by_satellite cover every match."""
     start, end = windows[0][0], max(e for _, e in windows)
     filtered = collections is not None
 
@@ -663,12 +711,7 @@ async def run_search(
     # NovaSAR's "All" collection is also under a named NovaSAR product;
     # ResourceSat-1 LISS-4 MX23 repeats MONO), so one scene can come back
     # twice. Keep one copy, preferring the named product over "All".
-    unique: dict[str, dict[str, Any]] = {}
-    for item in data.get("features", []):
-        kept = unique.get(item.get("id"))
-        if kept is None or str(kept.get("collection") or "").endswith("-all"):
-            unique[item.get("id")] = item
-    scenes = [_item_to_scene(i) for i in unique.values()]
+    scenes = [_item_to_scene(i) for i in unique_items(data.get("features", []))]
     # The catalogue reports no match count; a "next" link means there are more.
     more = any(link.get("rel") == "next" for link in data.get("links", []))
     by_id = {c.id: c for c in cat}
@@ -693,6 +736,9 @@ async def run_search(
         "note": "The STAC API is updated weekly; scenes from the last few days may not be in it yet.",
         "scenes": scenes,
     }
+    # The search itself, so the Scenes tab can ask for this result's counts
+    # and its other pages (whole.py). None when nothing could be searched.
+    result["search"] = None if nothing_can_match else {k: body[k] for k in _SEARCH_KEYS if k in body}
     if selections:
         result["searched"]["product_level"] = list(product_words)
     if len(windows) > 1:
@@ -705,12 +751,7 @@ async def run_search(
         result["searched"]["availability"] = _availability_label(wanted_availability)
     if want_cover:
         result["searched"]["covers_area"] = True
-    if more:
-        result["note"] += f" Only the newest {len(scenes):,} are shown; narrow the dates or area to see older ones."
-        if find_oldest and (oldest := await _oldest_matching(body)) is not None:
-            result["oldest_matching"] = oldest
-            result["note"] += f" The oldest scene that matches is from {oldest}."
-    else:
+    if not more:
         result["total"] = len(scenes)
     if want_cover and not nothing_can_match and not scenes:
         result["status"] = "none_cover_the_area"
@@ -736,28 +777,68 @@ async def run_search(
         })
     elif (why := _nothing_found(reasons_from if reasons_from is not None else collections or cat, windows)) is not None:
         result.update(why)
+    if more and result["search"] is not None:
+        counted = await _count_matches(result["search"], by_id)
+        if counted is None:
+            result["note"] += f" Only the newest {len(scenes):,} are shown; narrow the dates or area to see older ones."
+        elif counted["status"] == "too_broad":
+            return {"status": "too_broad", "error": TOO_BIG_TO_COUNT, "hint": TOO_BIG_HINT}
+        else:
+            result.update(count=counted["total"], total=counted["total"], by_satellite=counted["by_satellite"])
+            if counted["oldest"]:
+                result["oldest"] = counted["oldest"]
+            # Availability is read from each scene, so it is known only for
+            # the scenes returned.
+            result["availability_of_newest"] = result.pop("availability_summary")
+            result["note"] += f" availability_of_newest covers only the newest {len(scenes):,} scenes."
     return result
 
 
-async def _oldest_matching(body: dict[str, Any]) -> str | None:
-    """The date of the oldest scene the search matches, which the newest-1,000
-    window cannot show: the same search, oldest first, one scene, dates only.
-    None when the STAC API cannot say in time; the answer then has only what
-    was shown."""
+TOO_BIG_TO_COUNT = (
+    "This search matches more scenes than the STAC API can count in its time limit. "
+    "Name a satellite or a sensor, or choose a smaller area or a shorter span of dates."
+)
+TOO_BIG_HINT = "Explain this to the user and ask how they want to narrow the search. Do not search again unchanged."
+
+
+async def _count_matches(search: dict[str, Any], by_id: dict[str, names.Collection]) -> dict[str, Any] | None:
+    """Every scene a search matches, counted by the STAC API: the total, the
+    oldest date (as a scene's date of pass) and the count per satellite and
+    sensor. {"status": "too_broad"} when the STAC API cannot count it in its
+    time limit; None when it cannot be reached."""
     try:
-        data = await _stac("POST", "/search", timeout=10, json={
-            **body,
-            "limit": 1,
-            "sortby": [{"field": "properties.datetime", "direction": "asc"}],
-            "fields": {"include": ["properties.datetime", "properties.DOP"], "exclude": ["geometry", "assets", "links"]},
-        })
-    except (httpx.HTTPError, ValueError):
+        data = await _stac("POST", "/aggregate", timeout=75, json={
+            **search, "aggregations": ["total_count", "datetime_min", "collection_frequency"]})
+    except httpx.HTTPStatusError as exc:
+        return {"status": "too_broad"} if exc.response.status_code == 400 else None
+    except httpx.HTTPError:
         return None
-    feats = data.get("features") or []
-    if not feats:
-        return None
-    p = feats[0].get("properties") or {}
-    return p.get("DOP") or (p.get("datetime") or "")[:10] or None
+    got = {a["name"]: a for a in data.get("aggregations") or []}
+    # NovaSAR's "All" collection repeats scenes of the named NovaSAR products;
+    # it counts only for a satellite none of whose named collections has
+    # scenes in this search.
+    named: Counter[str] = Counter()
+    covered: set[str] = set()
+    catch_all: list[tuple[str, str, int]] = []
+    for b in (got.get("collection_frequency") or {}).get("buckets") or []:
+        c = by_id.get(b["key"])
+        label = f"{c.satellite} {c.sensor}" if c else str(b["key"])
+        satellite = c.satellite if c else label
+        if str(b["key"]).endswith("-all"):
+            catch_all.append((satellite, label, b["frequency"]))
+        else:
+            named[label] += b["frequency"]
+            covered.add(satellite)
+    for satellite, label, n in catch_all:
+        if satellite not in covered:
+            named[label] += n
+    oldest = (got.get("datetime_min") or {}).get("value")
+    return {
+        "status": "ok",
+        "total": (got.get("total_count") or {}).get("value", 0),
+        "oldest": datetime.fromisoformat(oldest.replace("Z", "+00:00")).strftime("%d-%b-%Y") if oldest else None,
+        "by_satellite": dict(named.most_common()),
+    }
 
 
 # --- hand-off ----------------------------------------------------------------
@@ -830,10 +911,10 @@ _MODEL_SAMPLE = 10
 def for_model(name: str, result: Any) -> str:
     """A tool result as the text the model reads."""
     if name == "search_catalog" and isinstance(result, dict) and "scenes" in result:
-        slim = {k: v for k, v in result.items() if k != "scenes"}
-        if slim.get("more_available") and "oldest" in slim:
-            # "oldest" is the oldest of the scenes shown, which a model took
-            # for the start of the archive; name it for what it is.
+        slim = {k: v for k, v in result.items() if k not in ("scenes", "search")}
+        if isinstance(slim.get("count"), str) and "oldest" in slim:
+            # A count that reads "N+" could not be made: "oldest" is then the
+            # oldest scene shown, not the oldest match.
             slim["oldest_shown"] = slim.pop("oldest")
         slim["sample_scenes"] = [
             {k: s.get(k) for k in ("id", "date_of_pass", "selection", "availability")}

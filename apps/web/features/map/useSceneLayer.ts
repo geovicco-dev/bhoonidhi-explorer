@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import type * as maplibregl from "maplibre-gl"
 import { useMap } from "./MapProvider"
 import { afterInsetsSettle, mapInsets } from "./insets"
@@ -6,18 +6,22 @@ import { resolveColor } from "./color"
 import { useChatStore, visibleScenes } from "@/features/chat/store"
 import type { Scene } from "@/features/chat/types"
 import { AVAILABILITY, AVAILABILITY_ORDER } from "@/features/scene/availability"
-import { useQuicklookStore } from "./quicklook"
+import { useChosenScenes, useSceneSource, useStripSettled } from "@/features/timeline/whole"
 import { useAoiStore } from "@/features/aoi/store"
 
-// Result layer: filtered scene footprints coloured by availability.
-// A new search redraws and reframes; a filter change re-feeds the source
-// without moving the camera. While scenes are chosen, only they are drawn
-// (the open one in its availability colour, the rest in the selection
-// colour), so the open scene's quicklook is not buried.
+// Result layer: the outlines of the scenes the strip shows, coloured by
+// availability, with no fill, so overlapping footprints never hide the map.
+// A new search redraws and reframes, and so do choosing rows or dates and
+// removing the chosen scenes; more strip pages re-feed the source without
+// moving the camera. While scenes are chosen, only they are drawn (the open
+// one in its availability colour, the rest in the selection colour), so the
+// open scene's quicklook is not buried.
 
 const SOURCE_ID = "scenes"
-const FILL_ID = "scenes-fill"
 const LINE_ID = "scenes-line"
+// How long the footprints must hold still after the dates or rows change
+// before the map refits to them.
+const REFIT_SETTLE_MS = 300
 
 const FALLBACK_COLOR = "#64748b" // unknown availability
 const SELECTION_TOKEN = "--bx-accent"
@@ -69,29 +73,13 @@ function boundsOf(fc: GeoJSON.FeatureCollection): maplibregl.LngLatBoundsLike | 
   ]
 }
 
-// Footprints are filled lightly, except while a quicklook is on the map:
-// then only their outlines are drawn, so no tint sits over the image.
-function fillOpacity(): number {
-  return useQuicklookStore.getState().drapedId ? 0 : 0.15
-}
-
 function ensureLayers(map: maplibregl.Map, data: GeoJSON.FeatureCollection) {
   const existing = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
   if (existing) {
     existing.setData(data)
-    if (map.getLayer(FILL_ID)) map.setPaintProperty(FILL_ID, "fill-opacity", fillOpacity())
     return
   }
   map.addSource(SOURCE_ID, { type: "geojson", data })
-  map.addLayer({
-    id: FILL_ID,
-    type: "fill",
-    source: SOURCE_ID,
-    paint: {
-      "fill-color": ["get", "color"],
-      "fill-opacity": fillOpacity(),
-    },
-  })
   map.addLayer({
     id: LINE_ID,
     type: "line",
@@ -107,6 +95,8 @@ function ensureLayers(map: maplibregl.Map, data: GeoJSON.FeatureCollection) {
 export function useSceneLayer() {
   const { map } = useMap()
   const scenes = useChatStore((s) => s.scenes)
+  const source = useSceneSource()
+  const chosenScenes = useChosenScenes()
   const timeRange = useChatStore((s) => s.timeRange)
   const satelliteFilter = useChatStore((s) => s.satelliteFilter)
   const selectedSceneId = useChatStore((s) => s.selectedSceneId)
@@ -126,10 +116,9 @@ export function useSceneLayer() {
     if (chosenIds.length) {
       // The open scene in its availability colour, as when it is the only
       // one; the others chosen with it in the selection colour.
-      const ids = new Set(chosenIds)
       const selection = resolveColor(SELECTION_TOKEN)
-      const open = scenes.filter((s) => s.id === selectedSceneId)
-      const others = scenes.filter((s) => ids.has(s.id) && s.id !== selectedSceneId)
+      const open = chosenScenes.filter((s) => s.id === selectedSceneId)
+      const others = chosenScenes.filter((s) => s.id !== selectedSceneId)
       return {
         type: "FeatureCollection",
         features: [
@@ -138,10 +127,10 @@ export function useSceneLayer() {
         ],
       }
     }
-    return scenesToFeatures(visibleScenes(scenes, timeRange, satelliteFilter), colorMap())
+    return scenesToFeatures(visibleScenes(source, timeRange, satelliteFilter), colorMap())
   }
 
-  // fitBounds runs here only: a new search reframes, filtering does not.
+  // A new search reframes to every scene it holds.
   useEffect(() => {
     if (!map) return
 
@@ -174,20 +163,51 @@ export function useSceneLayer() {
       map.off("style.load", refeed)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, scenes, timeRange, satelliteFilter, chosenIds, selectedSceneId, shaping])
+  }, [map, scenes, source, timeRange, satelliteFilter, chosenScenes, selectedSceneId, shaping])
 
   // Re-feed on filter/selection change without touching the camera.
   useEffect(() => {
     if (!map) return
     ensureLayers(map, drawnFeatures())
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, timeRange, satelliteFilter, chosenIds, selectedSceneId, shaping])
+  }, [map, source, timeRange, satelliteFilter, chosenScenes, selectedSceneId, shaping])
 
-  // The fill goes when a quicklook drapes and comes back when it leaves.
-  const drapedId = useQuicklookStore((s) => s.drapedId)
+  // Choosing rows or dates, or removing the chosen scenes, refits the map to
+  // the strip's footprints once those have come and held still, so a drag of
+  // the date window fits once, on release. A new search frames itself above,
+  // and more strip pages leave the camera where it is. While scenes are
+  // chosen or the area is being shaped, the fit waits until the strip's
+  // footprints show again.
+  const settled = useStripSettled()
+  const refit = useRef(false)
+  const last = useRef({ scenes, timeRange, satelliteFilter, chosenIds })
   useEffect(() => {
-    if (map?.getLayer(FILL_ID)) map.setPaintProperty(FILL_ID, "fill-opacity", fillOpacity())
-  }, [map, drapedId])
+    const was = last.current
+    last.current = { scenes, timeRange, satelliteFilter, chosenIds }
+    if (was.scenes !== scenes) refit.current = false
+    else if (
+      was.timeRange !== timeRange ||
+      was.satelliteFilter !== satelliteFilter ||
+      (was.chosenIds.length > 0 && chosenIds.length === 0)
+    )
+      refit.current = true
+  }, [scenes, timeRange, satelliteFilter, chosenIds])
+  useEffect(() => {
+    if (!map || !refit.current || !settled || shaping || chosenIds.length) return
+    let cancel = () => {}
+    const timer = window.setTimeout(() => {
+      refit.current = false
+      const bounds = boundsOf(scenesToFeatures(visibleScenes(source, timeRange, satelliteFilter), {}))
+      if (!bounds) return
+      cancel = afterInsetsSettle(() =>
+        map.fitBounds(bounds, { padding: mapInsets(map.getContainer()), maxZoom: 9, duration: 600 }),
+      )
+    }, REFIT_SETTLE_MS)
+    return () => {
+      window.clearTimeout(timer)
+      cancel()
+    }
+  }, [map, source, timeRange, satelliteFilter, settled, shaping, chosenIds.length])
 
   // Only on request (Zoom to scene, or the scene card appearing under a shrunk
   // palette), never on selection alone, so browsing the strip does not move
@@ -196,7 +216,7 @@ export function useSceneLayer() {
   const zoomRequest = useChatStore((s) => s.zoomRequest)
   useEffect(() => {
     if (!map || zoomRequest === 0 || !selectedSceneId) return
-    const one = scenes.find((s) => s.id === selectedSceneId)
+    const one = chosenScenes.find((s) => s.id === selectedSceneId) ?? scenes.find((s) => s.id === selectedSceneId)
     if (!one?.footprint) return
     const bounds = boundsOf(scenesToFeatures([one], {}))
     if (!bounds) return

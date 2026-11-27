@@ -93,10 +93,11 @@ export const queryApi = {
     return ((await res.json()) as { satellites: ArchiveSatellite[] }).satellites
   },
   check: (query: Query) => post<QueryCheck>("/query/check", { query }),
-  bhd: (query: Query, sceneIds: string[]) =>
+  bhd: (query: Query, sceneIds: string[], total?: number) =>
     post<{ steps?: { what: string; command: string }[]; note?: string; error?: string }>("/query/bhd", {
       query,
       scene_ids: sceneIds,
+      total: total ?? null,
     }),
   fromSearch: (args: Record<string, unknown>) => post<{ query: Query }>("/query/from-search", { arguments: args }),
   fromQuestion: (body: { text: string; area: Aoi | null; base: Query; search_args: Record<string, unknown> | null }) =>

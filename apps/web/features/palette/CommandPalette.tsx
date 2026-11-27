@@ -12,13 +12,13 @@ import {
   IconPlayerStopFilled,
   IconTerminal2,
 } from "@tabler/icons-react"
-import { useChatStore, visibleScenes } from "@/features/chat/store"
-import { sceneCount } from "@/features/chat/types"
+import { useChatStore } from "@/features/chat/store"
 import { Transcript, activeActivity, waitingText } from "@/features/chat/Transcript"
 import { convPage } from "@/features/chat/palette"
 import { RECENT_ID, RECENT_SHOWN, Recent, recentOptionId } from "@/features/chat/Recent"
 import { SUGGESTIONS } from "@/features/chat/suggestions"
 import { ScenesView } from "@/features/timeline/ScenesView"
+import { countLine, useResultCount } from "@/features/timeline/whole"
 import { placeRows } from "@/features/aoi/palette"
 import { PLACE_PREFIX, usePlaceStore } from "@/features/aoi/places"
 import { useAoiStore } from "@/features/aoi/store"
@@ -440,19 +440,14 @@ export function CommandPalette() {
   // What the empty bar says. Before the first question: a rotating suggestion
   // (Tab fills it in). During a conversation: the step the agent is on, or,
   // once idle, the conversation and what it found. Typing replaces either.
-  const shownCount = useMemo(
-    () => visibleScenes(scenes, timeRange, satelliteFilter).length,
-    [scenes, timeRange, satelliteFilter],
-  )
+  // The same count as under the Scenes tab's rows, against the row opened.
+  const resultCount = useResultCount(timeRange, satelliteFilter)
+  const found = scenes.length ? countLine(resultCount, scenes.length, moreScenes) : null
   const status = streaming
     ? `${waiting ? waitingText(waiting) : activeActivity(timeline)}…`
     : [
         title || "New session",
-        scenes.length
-          ? shownCount === scenes.length
-            ? sceneCount(scenes.length, moreScenes)
-            : `${shownCount.toLocaleString("en")} of ${sceneCount(scenes.length, moreScenes)}`
-          : null,
+        found,
         chosenCount ? `${chosenCount.toLocaleString("en")} selected` : null,
       ]
         .filter(Boolean)
@@ -730,7 +725,12 @@ export function CommandPalette() {
                     <Tabs
                       tab={tab}
                       setTab={setTab}
-                      count={scenes.length ? `${scenes.length.toLocaleString("en")}${moreScenes ? "+" : ""}` : ""}
+                      count={
+                        !scenes.length
+                          ? ""
+                          : (resultCount.inView ?? resultCount.whole)?.toLocaleString("en") ??
+                            `${scenes.length.toLocaleString("en")}${moreScenes ? "+" : ""}`
+                      }
                     />
                     <span className="min-w-0 flex-1 truncate text-right text-xs text-fg-faint" title={title}>
                       {title}

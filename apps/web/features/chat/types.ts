@@ -42,15 +42,24 @@ export interface Scene {
 
 export interface SearchResult {
   status?: string
+  // Every scene that matches; "N+" only when the STAC API could not count.
+  count?: number | string
   total?: number
   returned?: number
-  // True when more scenes match than the API returns (1,000, newest first).
+  // True when more scenes match than the search returns (the newest 1,000).
   more_available?: boolean
+  // The dates of the oldest and newest match, as the portal writes them.
+  oldest?: string
+  newest?: string
   scenes?: Scene[]
+  // The STAC search that found the scenes, for asking the explorer's API for
+  // the result's counts and further pages. Results saved before it existed
+  // have none.
+  search?: Record<string, unknown> | null
 }
 
-// "176 scenes", or "1,000+ scenes (newest 1,000 shown)" when more matched
-// than were returned. The API never counts past its limit.
+// "176 scenes", or "1,000+ scenes (newest 1,000 shown)" for a result saved
+// before the explorer counted past the scenes it returned.
 export function sceneCount(n: number, more: boolean): string {
   const plural = n === 1 ? "" : "s"
   return more ? `${n.toLocaleString("en")}+ scenes (newest ${n.toLocaleString("en")} shown)` : `${n.toLocaleString("en")} scene${plural}`

@@ -72,34 +72,3 @@ export function findNode(tree: TreeNode[], key: string): TreeNode | undefined {
   }
   return undefined
 }
-
-// Scenes per row per period for any set of rows: a scene counts in every row
-// it falls under. `bounds` are the matrix's periods and `extent` the dates it
-// covers ([first ms, last ms], both inclusive).
-export function rowCounts(
-  scenes: Scene[],
-  keys: string[],
-  bounds: Array<[number, number]>,
-  extent: [number, number],
-  dateOf: (s: Scene) => number | null,
-): number[][] {
-  const counts = keys.map(() => new Array<number>(bounds.length).fill(0))
-  const index = new Map(keys.map((k, i) => [k, i]))
-  if (!bounds.length) return counts
-  for (const s of scenes) {
-    const ms = dateOf(s)
-    if (ms === null || ms < extent[0] || ms > extent[1]) continue
-    let lo = 0
-    let hi = bounds.length - 1
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1
-      if (bounds[mid]![0] <= ms) lo = mid
-      else hi = mid - 1
-    }
-    for (const k of sceneKeys(s)) {
-      const i = index.get(k)
-      if (i !== undefined) counts[i]![lo]! += 1
-    }
-  }
-  return counts
-}

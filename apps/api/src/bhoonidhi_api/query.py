@@ -206,8 +206,12 @@ def check(query: dict[str, Any], cat: list[names.Collection]) -> Checked:
     if problem:
         out.problems.append(problem)
     out.area = area
+    if not items and not problem and tools.too_wide(area):
+        out.problems.append(_problem(
+            "items", "Every satellite over all of India or everywhere is more scenes than the STAC API can count. "
+            "Choose a satellite, or draw or pick a smaller area such as a state or a city."))
     if not query.get("area"):
-        out.notes.append("No area, so this searches everywhere and shows the newest 1,000 scenes.")
+        out.notes.append("No area, so this searches everywhere.")
         if query.get("covers_area"):
             out.problems.append(_problem("area", "“Only scenes that cover all of it” needs an area.",
                                          {"label": "Turn it off", "set": {"covers_area": False}}))
@@ -313,13 +317,22 @@ def answer(result: dict[str, Any]) -> str:
     """A one-line answer written from the result's own numbers."""
     if result.get("status") == "none_cover_the_area":
         return str(result.get("note") or "No single scene covers the whole area.")
+    if result.get("status") == "too_broad":
+        return str(result.get("error"))
     if not result.get("scenes"):
         why = result.get("why_empty")
         return "No scenes match." + (f" {'; '.join(why)}." if why else "")
-    by_sat = ", ".join(f"{k} {v}" for k, v in (result.get("by_satellite") or {}).items())
-    avail = ", ".join(f"{v} {_AVAILABILITY_WORDS.get(k, k)}" for k, v in (result.get("availability_summary") or {}).items())
-    more = f" Only the newest {len(result['scenes']):,} are on the map." if result.get("more_available") else ""
-    return f"{result.get('count')} scenes, {result.get('oldest')} to {result.get('newest')}: {by_sat}. {avail}.{more}"
+    count = result.get("count")
+    by_sat = ", ".join(f"{k} {v:,}" for k, v in (result.get("by_satellite") or {}).items())
+    partial = "availability_of_newest" in result
+    avail = ", ".join(
+        f"{v:,} {_AVAILABILITY_WORDS.get(k, k)}"
+        for k, v in (result.get("availability_of_newest" if partial else "availability_summary") or {}).items()
+    )
+    if partial:
+        avail = f"Of the newest {len(result['scenes']):,}: {avail}"
+    return (f"{count:,}" if isinstance(count, int) else f"{count}") + (
+        f" scenes, {result.get('oldest')} to {result.get('newest')}: {by_sat}. {avail}.")
 
 
 def memory(query: dict[str, Any], result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -532,10 +545,13 @@ def from_question(
     return out
 
 
-def bhd_steps(query: dict[str, Any], scene_ids: list[str], cat: list[names.Collection]) -> dict[str, Any]:
+def bhd_steps(
+    query: dict[str, Any], scene_ids: list[str], cat: list[names.Collection], total: int | None = None
+) -> dict[str, Any]:
     """The commands that download the scenes a query found: one saved `bhd`
     search over the query's whole date span with its products, a download of
-    the found scenes by id, then deleting the saved search."""
+    the found scenes by id, then deleting the saved search. `total` is every
+    scene the query found when that is more than `scene_ids` holds."""
     checked = check(query, cat)
     if not checked.ok:
         return {"status": "invalid_query", "problems": checked.problems}
@@ -556,14 +572,15 @@ def bhd_steps(query: dict[str, Any], scene_ids: list[str], cat: list[names.Colle
     slug = tools.throwaway_slug(f"search-{start.isoformat()}", shlex.join(create))
     create += ["--slug", slug, tools.PLAIN]
     download = [*tools.BHD, "query", "download", slug, "--out", "./bhoonidhi", tools.PLAIN]
-    pick = len(scene_ids) <= MAX_SELECT
+    found = max(total or 0, len(scene_ids))
+    pick = found <= MAX_SELECT
     if pick:
         download += ["--select", ",".join(scene_ids)]
     wide = len(checked.windows) > 1 or checked.availability or query.get("max_resolution_m") is not None
     note = (
-        f"--select downloads only the {len(scene_ids)} scenes this query found."
+        f"--select downloads only the {found} scenes this query found."
         if pick else
-        f"This query found {len(scene_ids)} scenes, too many to list, so the command downloads the whole saved search"
+        f"This query found {found:,} scenes, too many to list, so the command downloads the whole saved search"
         + (", which also holds scenes outside the query's months, availability or resolution. Narrow the query to "
            f"{MAX_SELECT} scenes or fewer to download exactly these." if wide else ".")
     )

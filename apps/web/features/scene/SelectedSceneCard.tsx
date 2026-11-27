@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react"
 import { useChatStore } from "@/features/chat/store"
 import { usePaletteStore } from "@/features/palette/store"
 import { QuicklookControl } from "@/features/map/QuicklookControl"
+import { useScene } from "@/features/timeline/whole"
 import { DETAIL_CARD_WIDTH, SceneDetailCard } from "./SceneDetailCard"
 
 // Below 1280px the card can reach down onto the map buttons (bottom right) or
@@ -62,13 +63,13 @@ function useClearOfCorners() {
 // and the card.
 export function SelectedSceneCard() {
   const expanded = usePaletteStore((s) => s.expanded)
-  const scenes = useChatStore((s) => s.scenes)
+  const selected = useScene(useChatStore((s) => s.selectedSceneId))
   const selectedSceneId = useChatStore((s) => s.selectedSceneId)
   const closeScene = useChatStore((s) => s.closeScene)
   const requestZoom = useChatStore((s) => s.requestZoom)
   const clearOfCorners = useClearOfCorners()
 
-  const scene = !expanded && selectedSceneId ? scenes.find((s) => s.id === selectedSceneId) : undefined
+  const scene = !expanded && selectedSceneId ? selected : undefined
 
   // After the card has laid out, so its height counts in the map padding.
   useEffect(() => {

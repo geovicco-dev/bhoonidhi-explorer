@@ -9,19 +9,19 @@ import { initialBasemap, useBasemapTheme } from "./useBasemapTheme"
 import { AttributionControl, imageryCredits } from "./attribution"
 import { useChatStore, visibleScenes } from "@/features/chat/store"
 import { parseSceneDate } from "@/features/timeline/aggregate"
+import { useChosenScenes, useSceneSource, useWholeResult } from "@/features/timeline/whole"
 import { useAoiLayer } from "@/features/aoi/useAoiLayer"
 import { useAoiInteraction } from "@/features/aoi/useAoiInteraction"
 
 // Keeps the foreign providers' credits in step with the scenes on the map:
 // the chosen ones while any are chosen, else every scene the filters show.
 function useImageryCredits(control: React.RefObject<AttributionControl | null>) {
-    const scenes = useChatStore((s) => s.scenes)
+    const source = useSceneSource()
+    const chosen = useChosenScenes()
     const timeRange = useChatStore((s) => s.timeRange)
     const satelliteFilter = useChatStore((s) => s.satelliteFilter)
-    const chosenIds = useChatStore((s) => s.chosenIds)
     useEffect(() => {
-        const chosen = new Set(chosenIds)
-        const onMap = chosen.size ? scenes.filter((s) => chosen.has(s.id)) : visibleScenes(scenes, timeRange, satelliteFilter)
+        const onMap = chosen.length ? chosen : visibleScenes(source, timeRange, satelliteFilter)
         const credits = imageryCredits(
             onMap.map((s) => {
                 const ms = parseSceneDate(s.date_of_pass)
@@ -29,13 +29,15 @@ function useImageryCredits(control: React.RefObject<AttributionControl | null>) 
             }),
         )
         control.current?.setImagery(credits)
-    }, [control, scenes, timeRange, satelliteFilter, chosenIds])
+    }, [control, source, timeRange, satelliteFilter, chosen])
 }
 
 export function MapCanvas({ children }: { children?: ReactNode }) {
     const containerRef = useRef<HTMLDivElement>(null);
     const { setMap } = useMap()
     const attribution = useRef<AttributionControl | null>(null)
+    // Loads the counts and pages of a result bigger than one search returns.
+    useWholeResult()
     useSceneLayer()
     useQuicklookLayer()
     // After the scene layer, so the area is added above the footprints.

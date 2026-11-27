@@ -2,10 +2,10 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { IconCheck, IconChevronDown, IconChevronRight, IconCopy, IconDownload, IconX } from "@tabler/icons-react"
+import { IconCheck, IconChevronDown, IconChevronRight, IconCopy, IconDownload, IconLoader2, IconX } from "@tabler/icons-react"
 import { useTheme } from "next-themes"
-import { useChatStore, visibleScenes } from "@/features/chat/store"
-import { sceneCount, type Scene } from "@/features/chat/types"
+import { isPaged, useChatStore, visibleScenes } from "@/features/chat/store"
+import type { Scene } from "@/features/chat/types"
 import { SceneDetailCard } from "@/features/scene/SceneDetailCard"
 import { isReady, portalSummary } from "@/features/scene/availability"
 import { scenesHandoff, type Handoff } from "@/features/scene/handoff"
@@ -15,7 +15,18 @@ import { useDrill, useRowsOpen } from "./drill"
 import { downloadFootprints } from "./footprints"
 import { SceneCard } from "./SceneCard"
 import { ROWS_MIN_H, SatelliteRows } from "./SatelliteRows"
+import { tallyFromScenes } from "./tally"
 import { TimeOverview } from "./TimeOverview"
+import {
+  countLine,
+  loadMoreStrip,
+  useChosenScenes,
+  useResultCount,
+  useSceneSource,
+  useWhole,
+  windowTally,
+  type Counted,
+} from "./whole"
 
 // A card's quicklook is fetched once the card comes within a few cards of the
 // strip's visible part, and kept after. The card draws it as a CSS
@@ -65,6 +76,23 @@ function useChosenHandoff(chosen: Scene[]): { value: Handoff | null; error: stri
   return state.for === chosen ? state : { value: null, error: null }
 }
 
+// What stands in for the graph and the rows of a result that holds only its
+// newest scenes, until the STAC API has counted it, or when it could not.
+function CountStatus({ counted }: { counted: Counted }) {
+  return (
+    <div className="flex min-h-24 shrink-0 items-center justify-center gap-2 px-6 pt-3 text-center text-xs text-fg-muted">
+      {counted.status === "counting" ? (
+        <>
+          <IconLoader2 size={16} className="shrink-0 animate-spin text-fg-faint" aria-hidden />
+          Counting every scene that matches…
+        </>
+      ) : counted.status === "ok" ? null : (
+        <p role="status">{counted.message}</p>
+      )}
+    </div>
+  )
+}
+
 // The results of the conversation, top to bottom: the overview of every
 // scene's date with the window that chooses dates; the breadcrumb and the
 // rows (satellites, or the sensors or products of the row opened), showing
@@ -74,6 +102,7 @@ function useChosenHandoff(chosen: Scene[]): { value: Handoff | null; error: stri
 export function ScenesView() {
   const scenes = useChatStore((s) => s.scenes)
   const moreScenes = useChatStore((s) => s.moreScenes)
+  const result = useChatStore((s) => s.result)
   const timeRange = useChatStore((s) => s.timeRange)
   const setTimeRange = useChatStore((s) => s.setTimeRange)
   const satelliteFilter = useChatStore((s) => s.satelliteFilter)
@@ -85,23 +114,39 @@ export function ScenesView() {
   const clearChosen = useChatStore((s) => s.clearChosen)
   const requestZoom = useChatStore((s) => s.requestZoom)
 
+  // A result that holds only its newest scenes reads its counts from the
+  // STAC API and its scenes from pages (whole.ts); any other, from its own
+  // scenes.
+  const paged = isPaged(result)
+  const counted = useWhole((s) => s.base)
+  const narrow = useWhole((s) => s.narrow)
+  const strip = useWhole((s) => s.strip)
+  const own = useMemo(() => (paged ? null : tallyFromScenes(scenes)), [paged, scenes])
+  const base = paged ? (counted.status === "ok" ? counted.tally : null) : own
+
   // The rows and the strip follow the window a beat behind while it is
   // dragged, so the window itself never waits on them.
   const range = useDeferredValue(timeRange)
   const filter = useDeferredValue(satelliteFilter)
   const theme = useTheme().resolvedTheme === "light" ? "light" : "dark"
-  const summary = useMemo(() => overview(scenes, filter), [scenes, filter])
+  const win = useMemo(() => windowTally(base, narrow, range), [base, narrow, range])
+  const summary = useMemo(() => (base ? overview(base, filter) : null), [base, filter])
   const agg = useMemo(
     () =>
-      aggregateScenes(
-        scenes,
-        range ? [Math.floor(range[0] / DAY_MS) * DAY_MS, Math.floor(range[1] / DAY_MS) * DAY_MS + DAY_MS - 1] : null,
-        theme,
-      ),
-    [scenes, range, theme],
+      base && win
+        ? aggregateScenes(
+            base,
+            range ? [Math.floor(range[0] / DAY_MS) * DAY_MS, Math.floor(range[1] / DAY_MS) * DAY_MS + DAY_MS - 1] : null,
+            theme,
+            win.step,
+          )
+        : null,
+    [base, win, range, theme],
   )
-  const shown = useMemo(() => visibleScenes(scenes, range, filter), [scenes, range, filter])
-  const drill = useDrill(scenes, agg, satelliteFilter, setSatelliteFilter)
+  const stripSource = useSceneSource()
+  const shown = useMemo(() => visibleScenes(stripSource, range, filter), [stripSource, range, filter])
+  const resultCount = useResultCount(range, filter)
+  const drill = useDrill(result, base, win, agg, satelliteFilter, setSatelliteFilter)
   // Opening a row or following the breadcrumb replaces the rows, and the
   // button that was clicked goes with them, which leaves focus on the page.
   // Focus goes back to the rows so Esc still steps up a level.
@@ -114,10 +159,7 @@ export function ScenesView() {
   }, [drill.level])
   const rowsOpen = useRowsOpen((s) => s.open)
   const setRowsOpen = useRowsOpen((s) => s.toggle)
-  const chosen = useMemo(() => {
-    const ids = new Set(chosenIds)
-    return scenes.filter((s) => ids.has(s.id))
-  }, [scenes, chosenIds])
+  const chosen = useChosenScenes()
   // The hand-off downloads only the chosen scenes that are Ready; the
   // tooltip names the others, which need the portal.
   const chosenReady = useMemo(() => chosen.filter(isReady), [chosen])
@@ -161,11 +203,20 @@ export function ScenesView() {
     return () => window.clearTimeout(id)
   }, [selectedSceneId])
 
-  if (!agg || !summary) {
+  if (!scenes.length || (!paged && (!agg || !summary))) {
     return <p className="px-4 py-8 text-center text-sm text-fg-faint">No scenes yet. Ask for a place and dates.</p>
   }
 
-  const filtered = shown.length !== scenes.length
+  // How many scenes show, against the row opened (the whole result at the
+  // top). A result that holds only its newest scenes counts them in the STAC
+  // API; until the count comes, or if the STAC API could not count, its own
+  // scenes are all there is to go on.
+  const filtered = paged ? !!timeRange || satelliteFilter.length > 0 : shown.length !== scenes.length
+  // The strip asks for the next page as its end comes into view.
+  const onStripScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    if (paged && el.scrollLeft + el.clientWidth >= el.scrollWidth - 600) loadMoreStrip()
+  }
   const none = "Select scenes first: click a card, Ctrl/Cmd+click to add one, Shift+click to add a run"
   // What the CLI and MCP buttons say on hover, for the current selection.
   const handoffTitle = (what: "bhd" | "prompt") => {
@@ -188,6 +239,10 @@ export function ScenesView() {
           inside the chart, down to two rows), so the scene strip stays in
           view. On a window too short even for that, the whole tab scrolls. */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        {!agg || !summary ? (
+          <CountStatus counted={counted} />
+        ) : (
+          <>
         <div className="flex shrink-0 flex-col gap-1.5 px-3 pt-3">
           <TimeOverview data={summary} range={timeRange} onRange={setTimeRange} labelWidth={drill.labelWidth} />
           <div className="flex h-4 items-center justify-between gap-2 font-mono text-[10px]">
@@ -263,14 +318,21 @@ export function ScenesView() {
             />
           </div>
         )}
+          </>
+        )}
         <div className="h-3 shrink-0" />
 
         <div className="flex shrink-0 items-center justify-between border-t border-border-default px-3 py-2 text-xs text-fg-muted">
           <span className="flex items-center gap-2">
             <span className="font-mono">
-              {filtered
-                ? `${shown.length.toLocaleString("en")} of ${sceneCount(scenes.length, moreScenes)}`
-                : sceneCount(scenes.length, moreScenes)}
+              {resultCount.counting ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <IconLoader2 size={12} className="animate-spin text-fg-faint" aria-hidden />
+                  Counting scenes…
+                </span>
+              ) : (
+                countLine(resultCount, scenes.length, moreScenes)
+              )}
             </span>
             {chosen.length > 0 && (
               <span className="inline-flex items-center gap-0.5 font-mono text-fg">
@@ -332,6 +394,7 @@ export function ScenesView() {
               role="listbox"
               aria-label="Imagery scenes"
               aria-multiselectable
+              onScroll={onStripScroll}
               className="flex gap-3 overflow-x-auto scroll-smooth p-1 select-none"
             >
               <AnimatePresence initial={false}>
@@ -376,7 +439,16 @@ export function ScenesView() {
                   )
                 })}
               </AnimatePresence>
+              {paged && strip?.loading && (
+                <div className="flex shrink-0 items-center px-3" aria-label="Loading more scenes">
+                  <IconLoader2 size={16} className="animate-spin text-fg-faint" aria-hidden />
+                </div>
+              )}
             </div>
+          ) : paged && strip?.loading ? (
+            <p className="flex items-center justify-center gap-1.5 py-4 text-xs text-fg-muted">
+              <IconLoader2 size={12} className="animate-spin" aria-hidden /> Loading scenes…
+            </p>
           ) : (
             <p className="py-4 text-center text-xs text-fg-muted">No scenes match the current filter.</p>
           )}
