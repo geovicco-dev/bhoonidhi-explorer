@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import type * as maplibregl from "maplibre-gl"
 import { useMap } from "./MapProvider"
 import { afterInsetsSettle, mapInsets } from "./insets"
@@ -6,18 +6,22 @@ import { resolveColor } from "./color"
 import { useChatStore, visibleScenes } from "@/features/chat/store"
 import type { Scene } from "@/features/chat/types"
 import { AVAILABILITY, AVAILABILITY_ORDER } from "@/features/scene/availability"
-import { useChosenScenes, useSceneSource } from "@/features/timeline/whole"
+import { useChosenScenes, useSceneSource, useStripSettled } from "@/features/timeline/whole"
 import { useAoiStore } from "@/features/aoi/store"
 
 // Result layer: the outlines of the scenes the strip shows, coloured by
 // availability, with no fill, so overlapping footprints never hide the map.
-// A new search redraws and reframes; choosing rows or dates and more strip
-// pages re-feed the source without moving the camera. While scenes are
-// chosen, only they are drawn (the open one in its availability colour, the
-// rest in the selection colour), so the open scene's quicklook is not buried.
+// A new search redraws and reframes, and so do choosing rows or dates and
+// removing the chosen scenes; more strip pages re-feed the source without
+// moving the camera. While scenes are chosen, only they are drawn (the open
+// one in its availability colour, the rest in the selection colour), so the
+// open scene's quicklook is not buried.
 
 const SOURCE_ID = "scenes"
 const LINE_ID = "scenes-line"
+// How long the footprints must hold still after the dates or rows change
+// before the map refits to them.
+const REFIT_SETTLE_MS = 300
 
 const FALLBACK_COLOR = "#64748b" // unknown availability
 const SELECTION_TOKEN = "--bx-accent"
@@ -167,6 +171,43 @@ export function useSceneLayer() {
     ensureLayers(map, drawnFeatures())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, source, timeRange, satelliteFilter, chosenScenes, selectedSceneId, shaping])
+
+  // Choosing rows or dates, or removing the chosen scenes, refits the map to
+  // the strip's footprints once those have come and held still, so a drag of
+  // the date window fits once, on release. A new search frames itself above,
+  // and more strip pages leave the camera where it is. While scenes are
+  // chosen or the area is being shaped, the fit waits until the strip's
+  // footprints show again.
+  const settled = useStripSettled()
+  const refit = useRef(false)
+  const last = useRef({ scenes, timeRange, satelliteFilter, chosenIds })
+  useEffect(() => {
+    const was = last.current
+    last.current = { scenes, timeRange, satelliteFilter, chosenIds }
+    if (was.scenes !== scenes) refit.current = false
+    else if (
+      was.timeRange !== timeRange ||
+      was.satelliteFilter !== satelliteFilter ||
+      (was.chosenIds.length > 0 && chosenIds.length === 0)
+    )
+      refit.current = true
+  }, [scenes, timeRange, satelliteFilter, chosenIds])
+  useEffect(() => {
+    if (!map || !refit.current || !settled || shaping || chosenIds.length) return
+    let cancel = () => {}
+    const timer = window.setTimeout(() => {
+      refit.current = false
+      const bounds = boundsOf(scenesToFeatures(visibleScenes(source, timeRange, satelliteFilter), {}))
+      if (!bounds) return
+      cancel = afterInsetsSettle(() =>
+        map.fitBounds(bounds, { padding: mapInsets(map.getContainer()), maxZoom: 9, duration: 600 }),
+      )
+    }, REFIT_SETTLE_MS)
+    return () => {
+      window.clearTimeout(timer)
+      cancel()
+    }
+  }, [map, source, timeRange, satelliteFilter, settled, shaping, chosenIds.length])
 
   // Only on request (Zoom to scene, or the scene card appearing under a shrunk
   // palette), never on selection alone, so browsing the strip does not move

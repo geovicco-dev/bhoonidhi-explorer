@@ -10,6 +10,10 @@
   loads 100 scenes at a time as it scrolls, and the date window reaches any
   date in the result. A search too big for the STAC API to count says how
   to narrow it.
+- The map refits to the footprints it shows when satellites, sensors or
+  products are chosen, when Clear filters is pressed, when the date window
+  is let go, and when the chosen scenes are removed, once the panels have
+  stopped moving.
 
 ### Changed
 

@@ -305,6 +305,20 @@ export function useSceneSource(): Scene[] {
   return paged && paged.length ? paged : scenes
 }
 
+// Whether the strip holds the scenes of the current dates and rows: always
+// for a result that holds every scene it matched, else once their first page
+// has come.
+export function useStripSettled(): boolean {
+  const result = useChatStore((s) => s.result)
+  const timeRange = useChatStore((s) => s.timeRange)
+  const chosen = useChatStore((s) => s.satelliteFilter)
+  const base = useWhole((s) => s.base)
+  const strip = useWhole((s) => s.strip)
+  if (!isPaged(result)) return true
+  const rows = rowsFor(base, chosen)
+  return !!rows && !!strip && !strip.loading && strip.key === JSON.stringify(sliceOf(timeRange, rows))
+}
+
 // One scene by id, from the result's own scenes or any page fetched.
 export function useScene(id: string | null): Scene | undefined {
   const scenes = useChatStore((s) => s.scenes)
