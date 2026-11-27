@@ -774,6 +774,30 @@ def test_chosen_scenes_are_capped(fake_stac):
     assert query.scenes_handoff([], asyncio.run(tools.catalogue()))["status"] == "invalid_request"
 
 
+def _cell(scene_id: str, **props) -> str | None:
+    return tools._item_to_scene({**ITEM, "id": scene_id, "properties": props})["grid_cell"]
+
+
+def test_grid_cell_names_the_tile_or_the_path_and_row():
+    assert _cell("SEN2B_MSI_x", SENSOR="MSI", TILE_ID="T43RGM") == "MSI T43RGM"
+    assert _cell("R2311NOV2026080761009600051PSANSTUC00GTDF", SENSOR="LIS3", PATHNO="96", SCENE_NO="51") == "LIS3 96/51"
+    assert _cell("L9O17NOV2026000000001460040PSANSTUC00GTDF", SENSOR="OLI", PATHNO=146, SCENE_NO=40) == "OLI 146/40"
+
+
+def test_grid_cell_keeps_the_part_of_a_liss4_or_awifs_scene():
+    assert _cell("RAF30OCT2026051350009600051SSANSTUC00GTDA", SENSOR="LIS4", PATHNO="96", SCENE_NO="51") == "LIS4 96/51 A"
+    spelled = "R2A_AWIF_-_30-OCT-2026_96_51_C_SAN_51350_30-OCT-2026_PLD_51350_1_000_4"
+    assert _cell(spelled, SENSOR="AWIF", PATHNO="96", SCENE_NO="51") == "AWIF 96/51 C"
+    old = "RS2_AWIF_-_21-NOV-2026_98_50_F_SAN_80903_21-NOV-2026_PLD_80903_1_000_432_SAN_PLD _1_80903_1"
+    assert _cell(old, SENSOR="AWIF", PATHNO="98", SCENE_NO="50") == "AWIF 98/50 F"
+
+
+def test_grid_cell_is_none_without_a_grid():
+    assert _cell("E04_SAR_MRS_x", SENSOR="SAR", PATHNO="-999", SCENE_NO="-999") is None
+    assert _cell("JPSS1_VIIRS_x", SENSOR="VIR") is None
+    assert _cell("x", SENSOR="LIS3", PATHNO="", SCENE_NO="51") is None
+
+
 def test_resolve_location_uses_the_palette_search(monkeypatch):
     async def search(q, limit):
         assert (q, limit) == ("Gwalior", 1)

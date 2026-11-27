@@ -7,6 +7,7 @@ import { usePaletteStore } from "@/features/palette/store"
 import { QuicklookControl } from "@/features/map/QuicklookControl"
 import { useScene } from "@/features/timeline/whole"
 import { DETAIL_CARD_WIDTH, SceneDetailCard } from "./SceneDetailCard"
+import { useCellSteps } from "./cellSteps"
 
 // Below 1280px the card can reach down onto the map buttons (bottom right) or
 // the open credits (bottom left), both marked data-bottom-chrome. There it
@@ -17,8 +18,8 @@ const CLEAR_CORNERS = "(max-width: 1279.98px)"
 const BASE = 16
 const GAP = 8
 
-// A callback ref for the card's outer box: each card (one per scene, keyed)
-// follows the corners for as long as it is mounted, its exit included. The
+// A callback ref for the card's outer box: the card follows the corners for
+// as long as it is mounted, its exit included. The
 // place is set without a transition: the camera fit that follows the card's
 // appearance measures it, and must see where it ends up.
 function useClearOfCorners() {
@@ -67,13 +68,16 @@ export function SelectedSceneCard() {
   const selectedSceneId = useChatStore((s) => s.selectedSceneId)
   const closeScene = useChatStore((s) => s.closeScene)
   const requestZoom = useChatStore((s) => s.requestZoom)
+  const openOnMap = useChatStore((s) => s.openOnMap)
   const clearOfCorners = useClearOfCorners()
 
   const scene = !expanded && selectedSceneId ? selected : undefined
+  const steps = useCellSteps(scene)
 
   // After the card has laid out, so its height counts in the map padding.
+  // Not for a scene opened on the map, which leaves the camera still.
   useEffect(() => {
-    if (!scene) return
+    if (!scene || !useChatStore.getState().cameraFollows) return
     const id = window.requestAnimationFrame(() => requestZoom())
     return () => window.cancelAnimationFrame(id)
   }, [scene, requestZoom])
@@ -82,7 +86,8 @@ export function SelectedSceneCard() {
     <AnimatePresence>
       {scene && (
         <div
-          key={scene.id}
+          // One card while any scene is open: a new scene slides into it.
+          key="open-scene"
           ref={clearOfCorners}
           data-map-inset="bottom"
           className="pointer-events-auto absolute bottom-4 left-1/2 z-20 max-w-[calc(100vw-2rem)] -translate-x-1/2"
@@ -95,7 +100,7 @@ export function SelectedSceneCard() {
           >
             <div className="flex flex-col items-center gap-1">
               <QuicklookControl sceneId={scene.id} />
-              <SceneDetailCard scene={scene} onClose={closeScene} onZoom={requestZoom} />
+              <SceneDetailCard scene={scene} onClose={closeScene} onZoom={requestZoom} steps={steps} onStep={openOnMap} />
             </div>
           </motion.div>
         </div>

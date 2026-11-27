@@ -5,6 +5,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { useMap } from "./MapProvider"
 import { useSceneLayer } from "./useSceneLayer"
 import { useQuicklookLayer } from "./useQuicklookLayer"
+import { useFootprintClick } from "./useFootprintClick"
 import { initialBasemap, useBasemapTheme } from "./useBasemapTheme"
 import { AttributionControl, imageryCredits } from "./attribution"
 import { useChatStore, visibleScenes } from "@/features/chat/store"
@@ -40,6 +41,7 @@ export function MapCanvas({ children }: { children?: ReactNode }) {
     useWholeResult()
     useSceneLayer()
     useQuicklookLayer()
+    useFootprintClick()
     // After the scene layer, so the area is added above the footprints.
     useAoiLayer()
     useAoiInteraction()

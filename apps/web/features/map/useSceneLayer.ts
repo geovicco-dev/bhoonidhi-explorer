@@ -3,6 +3,7 @@ import type * as maplibregl from "maplibre-gl"
 import { useMap } from "./MapProvider"
 import { afterInsetsSettle, mapInsets } from "./insets"
 import { resolveColor } from "./color"
+import { footprintArea } from "./footprints"
 import { useChatStore, visibleScenes } from "@/features/chat/store"
 import type { Scene } from "@/features/chat/types"
 import { AVAILABILITY, AVAILABILITY_ORDER } from "@/features/scene/availability"
@@ -13,12 +14,15 @@ import { useAoiStore } from "@/features/aoi/store"
 // availability, with no fill, so overlapping footprints never hide the map.
 // A new search redraws and reframes, and so do choosing rows or dates and
 // removing the chosen scenes; more strip pages re-feed the source without
-// moving the camera. While scenes are chosen, only they are drawn (the open
-// one in its availability colour, the rest in the selection colour), so the
-// open scene's quicklook is not buried.
+// moving the camera. While scenes are chosen, they are drawn on top (the open
+// one in its availability colour, the rest in the selection colour) and every
+// other footprint stays as a faint outline, so a click on it opens it. The
+// open scene's quicklook lies between the two: over the faint outlines, under
+// the chosen ones.
 
 const SOURCE_ID = "scenes"
 const LINE_ID = "scenes-line"
+export const CHOSEN_LINE_ID = "scenes-chosen-line"
 // How long the footprints must hold still after the dates or rows change
 // before the map refits to them.
 const REFIT_SETTLE_MS = 300
@@ -26,9 +30,14 @@ const REFIT_SETTLE_MS = 300
 const FALLBACK_COLOR = "#64748b" // unknown availability
 const SELECTION_TOKEN = "--bx-accent"
 
+// How each footprint is drawn: "shown" with nothing chosen, "faint" beside
+// chosen scenes, "chosen" for a chosen scene that is not open, "open".
+type Role = "shown" | "faint" | "chosen" | "open"
+
 function scenesToFeatures(
   scenes: Scene[],
   colors: Record<string, string>,
+  role: Role = "shown",
 ): GeoJSON.FeatureCollection {
   const features: GeoJSON.Feature[] = []
   for (const scene of scenes) {
@@ -40,6 +49,9 @@ function scenesToFeatures(
         id: scene.id,
         availability: scene.availability ?? "Unknown",
         color: colors[scene.availability ?? ""] ?? FALLBACK_COLOR,
+        role,
+        // Larger footprints are drawn first, under the smaller ones.
+        order: -footprintArea(scene),
       },
     })
   }
@@ -84,9 +96,23 @@ function ensureLayers(map: maplibregl.Map, data: GeoJSON.FeatureCollection) {
     id: LINE_ID,
     type: "line",
     source: SOURCE_ID,
+    filter: ["in", ["get", "role"], ["literal", ["shown", "faint"]]],
+    layout: { "line-sort-key": ["get", "order"] },
     paint: {
       "line-color": ["get", "color"],
-      "line-width": 1.5,
+      "line-width": ["match", ["get", "role"], "faint", 1, 1.5],
+      "line-opacity": ["match", ["get", "role"], "faint", 0.35, 0.9],
+    },
+  })
+  map.addLayer({
+    id: CHOSEN_LINE_ID,
+    type: "line",
+    source: SOURCE_ID,
+    filter: ["in", ["get", "role"], ["literal", ["chosen", "open"]]],
+    layout: { "line-sort-key": ["get", "order"] },
+    paint: {
+      "line-color": ["get", "color"],
+      "line-width": ["match", ["get", "role"], "open", 2, 1.5],
       "line-opacity": 0.9,
     },
   })
@@ -113,21 +139,20 @@ export function useSceneLayer() {
 
   const drawnFeatures = (): GeoJSON.FeatureCollection => {
     if (shaping) return { type: "FeatureCollection", features: [] }
-    if (chosenIds.length) {
-      // The open scene in its availability colour, as when it is the only
-      // one; the others chosen with it in the selection colour.
-      const selection = resolveColor(SELECTION_TOKEN)
-      const open = chosenScenes.filter((s) => s.id === selectedSceneId)
-      const others = chosenScenes.filter((s) => s.id !== selectedSceneId)
-      return {
-        type: "FeatureCollection",
-        features: [
-          ...scenesToFeatures(others, Object.fromEntries(AVAILABILITY_ORDER.map((a) => [a, selection]))).features,
-          ...scenesToFeatures(open, colorMap()).features,
-        ],
-      }
+    const shown = visibleScenes(source, timeRange, satelliteFilter)
+    if (!chosenIds.length) return scenesToFeatures(shown, colorMap())
+    const selection = resolveColor(SELECTION_TOKEN)
+    const chosen = new Set(chosenIds)
+    const open = chosenScenes.filter((s) => s.id === selectedSceneId)
+    const others = chosenScenes.filter((s) => s.id !== selectedSceneId)
+    return {
+      type: "FeatureCollection",
+      features: [
+        ...scenesToFeatures(shown.filter((s) => !chosen.has(s.id)), colorMap(), "faint").features,
+        ...scenesToFeatures(others, Object.fromEntries(AVAILABILITY_ORDER.map((a) => [a, selection])), "chosen").features,
+        ...scenesToFeatures(open, colorMap(), "open").features,
+      ],
     }
-    return scenesToFeatures(visibleScenes(source, timeRange, satelliteFilter), colorMap())
   }
 
   // A new search reframes to every scene it holds.
@@ -209,10 +234,11 @@ export function useSceneLayer() {
     }
   }, [map, source, timeRange, satelliteFilter, settled, shaping, chosenIds.length])
 
-  // Only on request (Zoom to scene, or the scene card appearing under a shrunk
-  // palette), never on selection alone, so browsing the strip does not move
-  // the camera. Padding is measured once the floating UI has come to rest, so
-  // it fits the space the UI leaves free.
+  // On request (the Zoom button, a plain click in the strip, or the scene
+  // card appearing under a shrunk palette after one), never on a footprint
+  // click or a step with ‹ ›, so browsing on the map leaves the camera still.
+  // Padding is measured once the floating UI has come to rest, so it fits
+  // the space the UI leaves free.
   const zoomRequest = useChatStore((s) => s.zoomRequest)
   useEffect(() => {
     if (!map || zoomRequest === 0 || !selectedSceneId) return
