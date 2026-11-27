@@ -41,6 +41,9 @@
   search.
 - A session saved before this change runs its search again when it is
   reopened, so its Scenes tab shows the whole result too.
+- A click on a scene card in the strip zooms the map to that scene. Ctrl,
+  Cmd and Shift clicks, which add scenes to the selection, leave the map
+  where it is.
 
 ## [0.3.3] - 2026-11-26
 

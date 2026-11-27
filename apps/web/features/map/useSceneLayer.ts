@@ -234,11 +234,11 @@ export function useSceneLayer() {
     }
   }, [map, source, timeRange, satelliteFilter, settled, shaping, chosenIds.length])
 
-  // On request (the Zoom button, or the scene card appearing under a shrunk
-  // palette after a strip click), never on a footprint click or a step with
-  // ‹ ›, so browsing on the map leaves the camera still. Padding is measured
-  // once the floating UI has come to rest, so it fits the space the UI
-  // leaves free.
+  // On request (the Zoom button, a plain click in the strip, or the scene
+  // card appearing under a shrunk palette after one), never on a footprint
+  // click or a step with ‹ ›, so browsing on the map leaves the camera still.
+  // Padding is measured once the floating UI has come to rest, so it fits
+  // the space the UI leaves free.
   const zoomRequest = useChatStore((s) => s.zoomRequest)
   useEffect(() => {
     if (!map || zoomRequest === 0 || !selectedSceneId) return

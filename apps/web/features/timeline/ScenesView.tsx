@@ -432,13 +432,13 @@ export function ScenesView() {
                               label={`${(s.selection ?? s.satellite ?? "Scene").replaceAll("_", " ")}, ${sceneDate(s)}`}
                               thumbnailSrc={near ? (s.quicklook_url ?? undefined) : undefined}
                               chosen={isChosen}
-                              onClick={(e) =>
-                                chooseScene(
-                                  s.id,
-                                  e.shiftKey ? "run" : e.metaKey || e.ctrlKey ? "toggle" : "only",
-                                  shown.map((x) => x.id),
-                                )
-                              }
+                              onClick={(e) => {
+                                const how = e.shiftKey ? "run" : e.metaKey || e.ctrlKey ? "toggle" : "only"
+                                chooseScene(s.id, how, shown.map((x) => x.id))
+                                // A plain click frames the scene; adding to
+                                // the selection leaves the camera where it is.
+                                if (how === "only") requestZoom()
+                              }}
                             />
                           )}
                         </LazyThumbnail>
