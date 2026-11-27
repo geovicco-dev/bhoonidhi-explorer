@@ -1,12 +1,12 @@
 import type { Scene } from "@/features/chat/types"
-import { matchesFilter } from "./hierarchy"
+import { chosenSeries, intoBounds, type Tally } from "./tally"
 
-// Two views of a result's dates. `overview` counts the scenes of the chosen
-// rows (every scene when none are chosen) across the whole result: the graph
-// at the top of the Scenes tab. `aggregateScenes` sets the periods of the
-// rows below it and each satellite's colour; it covers the chosen dates only
-// and uses a finer step as the window shrinks (years, months, weeks, then
-// days).
+// Two views of a result's dates, both read from a tally (tally.ts).
+// `overview` counts the scenes of the chosen rows (every scene when none are
+// chosen) across the whole result: the graph at the top of the Scenes tab.
+// `aggregateScenes` sets the periods of the rows below it and each
+// satellite's colour; it covers the chosen dates only and uses a finer step
+// as the window shrinks (years, months, weeks, then days).
 
 export interface TimelineRow {
   id: string
@@ -85,9 +85,9 @@ export function spanText(ms: number): string {
 
 export type Granularity = "day" | "week" | "month" | "year"
 
-function granularityFor(spanDays: number): Granularity {
-  if (spanDays <= 62) return "day"
-  if (spanDays <= 200) return "week"
+function granularityFor(spanDays: number, kept: "day" | "month"): Granularity {
+  if (spanDays <= 62 && kept === "day") return "day"
+  if (spanDays <= 200 && kept === "day") return "week"
   if (spanDays <= 1100) return "month"
   return "year"
 }
@@ -115,25 +115,22 @@ function bucketLabel(startMs: number, g: Granularity): string {
   return `${d.getUTCFullYear()}`
 }
 
-function datedScenes(scenes: Scene[]) {
-  return scenes
-    .map((s) => ({ scene: s, ms: parseSceneDate(s.date_of_pass) }))
-    .filter((x): x is { scene: Scene; ms: number } => x.ms !== null)
-}
-
 // `window` ([start, end] in ms, both inclusive) limits the matrix to those
-// dates and sets its step from their span; null covers every scene.
+// dates and sets its step from their span; null covers every scene. The rows
+// are the result's satellites, each with a colour that stays put whatever
+// the dates; their counts come from rowCounts (drill.ts), for whichever rows
+// show.
 export function aggregateScenes(
-  scenes: Scene[],
+  base: Tally,
   window: [number, number] | null = null,
   theme: "light" | "dark" = "dark",
+  kept: "day" | "month" = base.step,
 ): Aggregation | null {
-  const dated = datedScenes(scenes)
-  if (dated.length === 0) return null
+  if (base.first === null || base.last === null) return null
 
-  const minMs = window ? window[0] : Math.min(...dated.map((x) => x.ms))
-  const maxMs = window ? window[1] : Math.max(...dated.map((x) => x.ms)) + DAY_MS - 1
-  const g = granularityFor((maxMs - minMs) / DAY_MS)
+  const minMs = window ? window[0] : base.first
+  const maxMs = window ? window[1] : base.last + DAY_MS - 1
+  const g = granularityFor((maxMs - minMs) / DAY_MS, kept)
   const origin = bucketStart(minMs, "day", minMs)
 
   // Contiguous buckets so gaps read as empty cells.
@@ -149,22 +146,10 @@ export function aggregateScenes(
   }
 
   // Row id is the raw satellite code, the first part of every row key below
-  // it; the label is the readable name. Every satellite keeps its colour
-  // whatever the dates, so colours stay put while the window moves. The
-  // rows' counts come from rowCounts (hierarchy.ts), for whichever rows show.
-  const rowOrder: string[] = []
-  const rowLabel: Record<string, string> = {}
-  for (const { scene } of dated) {
-    const sat = scene.satellite ?? "Unknown"
-    if (!rowOrder.includes(sat)) {
-      rowOrder.push(sat)
-      rowLabel[sat] = readableSatellite(scene)
-    }
-  }
-
-  const rows: TimelineRow[] = rowOrder.map((sat, i) => ({
-    id: sat,
-    label: rowLabel[sat] ?? sat,
+  // it; the label is the readable name.
+  const rows: TimelineRow[] = base.tree.map((node, i) => ({
+    id: node.key,
+    label: node.label,
     color: PALETTE[i % PALETTE.length]![theme === "light" ? 0 : 1],
   }))
 
@@ -185,14 +170,13 @@ export interface Overview {
 // three years), per month (up to 33 years) or per year beyond that. The
 // dates and periods always come from every scene, so choosing satellites
 // changes only the counts and the window over the graph stays put.
-export function overview(scenes: Scene[], satellites: string[] = []): Overview | null {
-  const dated = datedScenes(scenes)
-  if (dated.length === 0) return null
-  const counted = satellites.length ? dated.filter(({ scene }) => matchesFilter(scene, satellites)) : dated
-  const first = Math.min(...dated.map((x) => x.ms))
-  const last = Math.max(...dated.map((x) => x.ms))
+export function overview(t: Tally, chosen: string[] = []): Overview | null {
+  if (t.first === null || t.last === null) return null
+  const { first, last } = t
   const spanDays = (last - first) / DAY_MS
-  const step: Granularity = spanDays <= 120 ? "day" : spanDays <= 1000 ? "week" : spanDays <= 12_000 ? "month" : "year"
+  let step: Granularity = spanDays <= 120 ? "day" : spanDays <= 1000 ? "week" : spanDays <= 12_000 ? "month" : "year"
+  // A tally kept per month has nothing finer to show.
+  if (t.step === "month" && (step === "day" || step === "week")) step = "month"
   const bounds: Array<[number, number]> = []
   let cursor = bucketStart(first, step, first)
   while (cursor <= last) {
@@ -200,17 +184,7 @@ export function overview(scenes: Scene[], satellites: string[] = []): Overview |
     bounds.push([cursor, end])
     cursor = end
   }
-  const counts = new Array<number>(bounds.length).fill(0)
-  for (const { ms } of counted) {
-    let lo = 0
-    let hi = bounds.length - 1
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1
-      if (bounds[mid]![0] <= ms) lo = mid
-      else hi = mid - 1
-    }
-    counts[lo]! += 1
-  }
+  const counts = intoBounds(chosenSeries(t, chosen), bounds, [-Infinity, Infinity])
   return { extent: [first, last + DAY_MS], counts, bounds, step }
 }
 

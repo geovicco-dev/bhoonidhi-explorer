@@ -6,17 +6,17 @@ import { resolveColor } from "./color"
 import { useChatStore, visibleScenes } from "@/features/chat/store"
 import type { Scene } from "@/features/chat/types"
 import { AVAILABILITY, AVAILABILITY_ORDER } from "@/features/scene/availability"
-import { useQuicklookStore } from "./quicklook"
+import { useChosenScenes, useSceneSource } from "@/features/timeline/whole"
 import { useAoiStore } from "@/features/aoi/store"
 
-// Result layer: filtered scene footprints coloured by availability.
-// A new search redraws and reframes; a filter change re-feeds the source
-// without moving the camera. While scenes are chosen, only they are drawn
-// (the open one in its availability colour, the rest in the selection
-// colour), so the open scene's quicklook is not buried.
+// Result layer: the outlines of the scenes the strip shows, coloured by
+// availability, with no fill, so overlapping footprints never hide the map.
+// A new search redraws and reframes; choosing rows or dates and more strip
+// pages re-feed the source without moving the camera. While scenes are
+// chosen, only they are drawn (the open one in its availability colour, the
+// rest in the selection colour), so the open scene's quicklook is not buried.
 
 const SOURCE_ID = "scenes"
-const FILL_ID = "scenes-fill"
 const LINE_ID = "scenes-line"
 
 const FALLBACK_COLOR = "#64748b" // unknown availability
@@ -69,29 +69,13 @@ function boundsOf(fc: GeoJSON.FeatureCollection): maplibregl.LngLatBoundsLike | 
   ]
 }
 
-// Footprints are filled lightly, except while a quicklook is on the map:
-// then only their outlines are drawn, so no tint sits over the image.
-function fillOpacity(): number {
-  return useQuicklookStore.getState().drapedId ? 0 : 0.15
-}
-
 function ensureLayers(map: maplibregl.Map, data: GeoJSON.FeatureCollection) {
   const existing = map.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
   if (existing) {
     existing.setData(data)
-    if (map.getLayer(FILL_ID)) map.setPaintProperty(FILL_ID, "fill-opacity", fillOpacity())
     return
   }
   map.addSource(SOURCE_ID, { type: "geojson", data })
-  map.addLayer({
-    id: FILL_ID,
-    type: "fill",
-    source: SOURCE_ID,
-    paint: {
-      "fill-color": ["get", "color"],
-      "fill-opacity": fillOpacity(),
-    },
-  })
   map.addLayer({
     id: LINE_ID,
     type: "line",
@@ -107,6 +91,8 @@ function ensureLayers(map: maplibregl.Map, data: GeoJSON.FeatureCollection) {
 export function useSceneLayer() {
   const { map } = useMap()
   const scenes = useChatStore((s) => s.scenes)
+  const source = useSceneSource()
+  const chosenScenes = useChosenScenes()
   const timeRange = useChatStore((s) => s.timeRange)
   const satelliteFilter = useChatStore((s) => s.satelliteFilter)
   const selectedSceneId = useChatStore((s) => s.selectedSceneId)
@@ -126,10 +112,9 @@ export function useSceneLayer() {
     if (chosenIds.length) {
       // The open scene in its availability colour, as when it is the only
       // one; the others chosen with it in the selection colour.
-      const ids = new Set(chosenIds)
       const selection = resolveColor(SELECTION_TOKEN)
-      const open = scenes.filter((s) => s.id === selectedSceneId)
-      const others = scenes.filter((s) => ids.has(s.id) && s.id !== selectedSceneId)
+      const open = chosenScenes.filter((s) => s.id === selectedSceneId)
+      const others = chosenScenes.filter((s) => s.id !== selectedSceneId)
       return {
         type: "FeatureCollection",
         features: [
@@ -138,10 +123,10 @@ export function useSceneLayer() {
         ],
       }
     }
-    return scenesToFeatures(visibleScenes(scenes, timeRange, satelliteFilter), colorMap())
+    return scenesToFeatures(visibleScenes(source, timeRange, satelliteFilter), colorMap())
   }
 
-  // fitBounds runs here only: a new search reframes, filtering does not.
+  // A new search reframes to every scene it holds.
   useEffect(() => {
     if (!map) return
 
@@ -174,20 +159,14 @@ export function useSceneLayer() {
       map.off("style.load", refeed)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, scenes, timeRange, satelliteFilter, chosenIds, selectedSceneId, shaping])
+  }, [map, scenes, source, timeRange, satelliteFilter, chosenScenes, selectedSceneId, shaping])
 
   // Re-feed on filter/selection change without touching the camera.
   useEffect(() => {
     if (!map) return
     ensureLayers(map, drawnFeatures())
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, timeRange, satelliteFilter, chosenIds, selectedSceneId, shaping])
-
-  // The fill goes when a quicklook drapes and comes back when it leaves.
-  const drapedId = useQuicklookStore((s) => s.drapedId)
-  useEffect(() => {
-    if (map?.getLayer(FILL_ID)) map.setPaintProperty(FILL_ID, "fill-opacity", fillOpacity())
-  }, [map, drapedId])
+  }, [map, source, timeRange, satelliteFilter, chosenScenes, selectedSceneId, shaping])
 
   // Only on request (Zoom to scene, or the scene card appearing under a shrunk
   // palette), never on selection alone, so browsing the strip does not move
@@ -196,7 +175,7 @@ export function useSceneLayer() {
   const zoomRequest = useChatStore((s) => s.zoomRequest)
   useEffect(() => {
     if (!map || zoomRequest === 0 || !selectedSceneId) return
-    const one = scenes.find((s) => s.id === selectedSceneId)
+    const one = chosenScenes.find((s) => s.id === selectedSceneId) ?? scenes.find((s) => s.id === selectedSceneId)
     if (!one?.footprint) return
     const bounds = boundsOf(scenesToFeatures([one], {}))
     if (!bounds) return

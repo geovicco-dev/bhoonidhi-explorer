@@ -2,7 +2,7 @@ import { env } from "@/lib/env"
 import { failure } from "@/lib/http"
 import type { Aoi } from "@/features/aoi/types"
 import type { Query } from "@/features/query/store"
-import type { AgentEvent } from "./types"
+import type { AgentEvent, SearchResult } from "./types"
 
 // Anonymous per-browser id; the API scopes conversations to it.
 const CLIENT_KEY = "bhoonidhi.clientId"
@@ -53,6 +53,10 @@ export type Conversation = Omit<ConversationSummary, "turns"> & {
   turns: StoredTurn[]
 }
 
+// A saved turn's search: the tool it ran and what it was given (the agent's
+// arguments, or the query form's whole query).
+export type SavedSearch = { tool: "search_catalog" | "query_catalog"; arguments: Record<string, unknown> }
+
 export type Place = {
   name: string
   detail: string
@@ -81,6 +85,9 @@ export const api = {
       body: JSON.stringify(upto === undefined ? {} : { upto }),
     }),
   geocode: (q: string) => call<{ places: Place[] }>(`/geocode?q=${encodeURIComponent(q)}`),
+  // Run a saved turn's search again, for a reopened conversation.
+  rerun: (saved: SavedSearch) =>
+    call<SearchResult>("/scenes/rerun", { method: "POST", headers: headers(true), body: JSON.stringify(saved) }),
   // Run a query from the form and save it as a turn; 422 when it has problems.
   query: async (id: string, query: Query, fromTurn: number | null) => {
     const res = await fetch(`${env.agentApiUrl}/conversations/${id}/query`, {

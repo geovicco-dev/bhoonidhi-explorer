@@ -2,10 +2,10 @@
 
 import { useMemo } from "react"
 import { create } from "zustand"
-import type { Scene } from "@/features/chat/types"
-import { parseSceneDate, readableSatellite, type TimelineRow } from "./aggregate"
-import { buildTree, depthOf, findNode, isUnder, rowCounts, SEP, type TreeNode } from "./hierarchy"
+import { type TimelineRow } from "./aggregate"
+import { depthOf, findNode, isUnder, SEP, type TreeNode } from "./hierarchy"
 import type { DisplayRow } from "./SatelliteRows"
+import { intoBounds, type Tally } from "./tally"
 
 // The Scenes tab's rows, one level at a time: the satellites, then the
 // sensors of one satellite, then the products of one sensor. Clicking a
@@ -23,9 +23,10 @@ export type Crumb = { label: string; level: number }
 // one was opened, so going back brings them back. Kept with the result they
 // belong to: they survive a switch to the Session tab and back, and a new
 // result starts again at the satellites.
-type Focus = { scenes: Scene[] | null; path: string[]; before: string[][] }
-const useFocus = create<Focus>()(() => ({ scenes: null, path: [], before: [] }))
+type Focus = { result: unknown; path: string[]; before: string[][] }
+const useFocus = create<Focus>()(() => ({ result: null, path: [], before: [] }))
 const NONE: string[][] = []
+const NO_ROWS: TreeNode[] = []
 
 // Whether the rows show; "Hide rows" holds across tabs and results.
 export const useRowsOpen = create<{ open: boolean; toggle: () => void }>()((set) => ({
@@ -44,15 +45,30 @@ function pathFrom(chosen: string[]): string[] {
   return parts.map((_, i) => parts.slice(0, i + 1).join(SEP))
 }
 
-const dateOf = (s: Scene) => parseSceneDate(s.date_of_pass)
 const opens = (node: TreeNode) => node.children.length > 0 && depthOf(node.key) < 2
 
-export function useDrill(scenes: Scene[], agg: Agg | null, chosen: string[], setChosen: (keys: string[]) => void) {
-  const tree = useMemo(() => buildTree(scenes, readableSatellite), [scenes])
-  const savedPath = useFocus((s) => (s.scenes === scenes ? s.path : null))
-  const before = useFocus((s) => (s.scenes === scenes ? s.before : NONE))
+// The row opened (a satellite or a sensor key), or null at the top.
+export function useOpened(result: unknown, chosen: string[]): string | null {
+  const savedPath = useFocus((s) => (s.result === result ? s.path : null))
+  return useMemo(() => (savedPath ?? pathFrom(chosen)).at(-1) ?? null, [savedPath, chosen])
+}
+
+// `result` names the result the rows belong to; `base` is its tally (the
+// rows and their totals) and `win` the tally of the dates on show (the rows'
+// numbers and periods).
+export function useDrill(
+  result: unknown,
+  base: Tally | null,
+  win: Tally | null,
+  agg: Agg | null,
+  chosen: string[],
+  setChosen: (keys: string[]) => void,
+) {
+  const tree = base?.tree ?? NO_ROWS
+  const savedPath = useFocus((s) => (s.result === result ? s.path : null))
+  const before = useFocus((s) => (s.result === result ? s.before : NONE))
   const path = useMemo(() => savedPath ?? pathFrom(chosen), [savedPath, chosen])
-  const setFocus = (p: string[], b: string[][]) => useFocus.setState({ scenes, path: p, before: b })
+  const setFocus = (p: string[], b: string[][]) => useFocus.setState({ result, path: p, before: b })
   const level = path.length
 
   const nodesAt = (at: number) => (at ? (findNode(tree, path[at - 1]!)?.children ?? []) : tree)
@@ -60,8 +76,11 @@ export function useDrill(scenes: Scene[], agg: Agg | null, chosen: string[], set
   const ticked = chosen.filter((k) => nodes.some((n) => n.key === k))
 
   const counts = useMemo(
-    () => (agg ? rowCounts(scenes, nodes.map((n) => n.key), agg.bucketBounds, agg.extent, dateOf) : []),
-    [scenes, agg, nodes],
+    () =>
+      agg && win
+        ? nodes.map((n) => intoBounds(win.rows.get(n.key) ?? [], agg.bucketBounds, agg.extent, win.step))
+        : [],
+    [win, agg, nodes],
   )
 
   const colorOf = useMemo(() => {

@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import type * as maplibregl from "maplibre-gl"
 import { useMap } from "./MapProvider"
 import { useChatStore } from "@/features/chat/store"
+import { useScene } from "@/features/timeline/whole"
 import { env } from "@/lib/env"
 import { useQuicklookStore } from "./quicklook"
 
@@ -49,8 +50,8 @@ function shownOpacity(): number {
 
 export function useQuicklookLayer() {
   const { map } = useMap()
-  const scenes = useChatStore((s) => s.scenes)
   const selectedSceneId = useChatStore((s) => s.selectedSceneId)
+  const selected = useScene(selectedSceneId)
 
   useEffect(() => {
     if (!map) return
@@ -71,7 +72,7 @@ export function useQuicklookLayer() {
       removeDrape(map)
 
       if (!selectedSceneId) return
-      const scene = scenes.find((s) => s.id === selectedSceneId)
+      const scene = selected
       if (!scene?.footprint || !scene.quicklook_url) return
       const coords = imageCoords(scene.footprint)
       if (!coords) return
@@ -85,8 +86,8 @@ export function useQuicklookLayer() {
         objectUrl = URL.createObjectURL(blob)
 
         map.addSource(SOURCE_ID, { type: "image", url: objectUrl, coordinates: coords })
-        // Below the footprint layers so the selected outline stays visible.
-        const before = map.getLayer("scenes-fill") ? "scenes-fill" : undefined
+        // Below the footprint outlines so the selected outline stays visible.
+        const before = map.getLayer("scenes-line") ? "scenes-line" : undefined
         map.addLayer(
           {
             id: LAYER_ID,
@@ -108,7 +109,7 @@ export function useQuicklookLayer() {
       cancelled = true
       clear()
     }
-  }, [map, selectedSceneId, scenes])
+  }, [map, selectedSceneId, selected])
 
   // The slider and O change the drape in place, without fetching it again.
   const opacity = useQuicklookStore((s) => s.opacity)

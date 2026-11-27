@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- The Scenes tab shows every scene a search finds, not only the newest
+  1,000. The STAC API counts the whole result for the date graph, the rows
+  and the totals, and a spinner shows while it counts. The scene strip
+  loads 100 scenes at a time as it scrolls, and the date window reaches any
+  date in the result. A search too big for the STAC API to count says how
+  to narrow it.
+
 ### Changed
 
 - The agent gives the real number of scenes a search matches, the oldest
@@ -9,6 +18,16 @@
   described only the newest 1,000. It does not search every satellite over
   all of India or everywhere: it asks for a satellite, a sensor or a smaller
   area instead, and the query form flags such a search the same way.
+- The scene count under the rows, the count in the palette's bar and the
+  number on the Scenes tab count what is on show: the satellite, sensor or
+  product opened, within the date window, as in "196 of 3,497 scenes".
+- The map draws the scenes the strip holds, as outlines with no fill, so a
+  busy result no longer turns the map solid.
+- The bhd commands copied for a query's scenes count every scene the query
+  found, so a result bigger than the newest 1,000 downloads the whole saved
+  search.
+- A session saved before this change runs its search again when it is
+  reopened, so its Scenes tab shows the whole result too.
 
 ## [0.3.3] - 2026-11-26
 
