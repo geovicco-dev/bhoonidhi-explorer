@@ -1,3 +1,15 @@
 # gitleaks settings: the default rules.
 [extend]
 useDefault = true
+
+# In the API tests, STAC collection ids (lowercase words joined by hyphens,
+# such as novasar-1-sar-20m-2pol-scansar) sit under "key" in fake STAC API
+# replies, which the generic API-key rule reads as a secret.
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "STAC collection ids in the API tests"
+condition = "AND"
+paths = ['''^apps/api/tests/''']
+regexTarget = "secret"
+regexes = ['''^[a-z0-9]+(-[a-z0-9]+)+$''']
