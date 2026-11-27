@@ -155,7 +155,8 @@ an address visitors cannot open (a LAN address, a container name), set
 ## Behind a reverse proxy
 
 The API limits each visitor's requests per minute (questions, searches,
-quicklooks, place searches), so it has to know who the visitor is. Behind a
+the Scenes tab's counts and pages, quicklooks, place searches), so it has to
+know who the visitor is. Behind a
 proxy every request arrives from the proxy's address, and the visitor's own
 address is in a header. Which header to believe depends on the proxy:
 

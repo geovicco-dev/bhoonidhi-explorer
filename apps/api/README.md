@@ -13,9 +13,15 @@ by a week. The live Bhoonidhi portal is never searched; only the
 quicklook images are fetched from it (the STAC API links to them), through
 the `/quicklook` proxy.
 
-A search returns up to 1,000 scenes, newest first. When more match, the
-result says `"count": "1,000+"` and `more_available: true`; the STAC API
-reports no total, and the API does not page past the limit to count.
+A search returns up to 1,000 scenes, newest first. When more match,
+`more_available` is true and the STAC API counts the whole result: `count`
+and `total` give the real number, `oldest` the oldest scene's date and
+`by_satellite` the count for each satellite and sensor, while the
+availability summary covers only the scenes returned. A search too big for
+the STAC API to count within its time limit comes back as `too_broad`, with
+what to narrow; if the count cannot be had at all, `count` stays `"1,000+"`.
+The result's `search` lets the Scenes tab count it by period and row and load
+its other scenes a page at a time (`/scenes/counts`, `/scenes/page`).
 
 Satellite and sensor names are resolved in `names.py`, against the
 STAC API's own collection list: exact names stay exact, a family name
@@ -161,15 +167,20 @@ so each browser sees only its own conversations.
 | POST   | `/query/search`                 | Query mode: check a query and search when it has no problems. A query with problems returns `status: "invalid_query"` with each problem and its fix, and is never searched. Nothing is saved. |
 | POST   | `/conversations/{id}/query`     | Run a query and save it as a turn, without the model (`{query, from_turn?}`). The agent sees it in later turns. 422 when the query has problems. |
 | POST   | `/query/bhd`                    | The `bhd` commands that download the scenes a query found (`{query, scene_ids}`). |
+| POST   | `/scenes/counts`                | A result's counts from the STAC API (`{search, start?, end?, rows?, interval?}`): in all, the oldest and newest date, and per period for each satellite and product, within the date window and the chosen rows. A count the STAC API cannot finish answers `status: "too_broad"`. |
+| POST   | `/scenes/page`                  | One page of a result's scenes, newest first (`{search, start?, end?, rows?, limit?, token?, ids?}`, 100 by default), with the next page's token; `ids` keeps only those scenes. |
+| POST   | `/scenes/rerun`                 | A saved turn's search run again (`{tool, arguments}`), for a conversation saved before results kept their search. Nothing is saved. |
 | POST   | `/scene/handoff`                | The `bhd` commands and the MCP prompt that download one scene (`{scene}`). |
 | POST   | `/scenes/handoff`               | The same for the scenes chosen in the strip (`{scenes}`, 1 to 100): one saved search over their days, products and a box around their middles, then `--select` of exactly those ids. |
 | POST   | `/query/from-search`            | An agent's `search_catalog` arguments as a query, for "Edit query" on its turn. |
 | POST   | `/query/from-question`          | A question waiting for the model as a query, for the form it opens (`{text, area, base, search_args?}`): the satellites, sensors, levels, months, years, "ready" and resolution the text names, over the previous search (`base`, or `search_args` from the agent's last search) and the map's area. Satellites with no scenes in the dates are left out. No model or geocoder call. |
 
-Five routes are limited per visitor address over the last minute, since each
-costs something upstream: `/conversations/{id}/chat` 6 (the model),
-`/query/search` and `/conversations/{id}/query` 30 together (the STAC API),
-`/quicklook` 60 (ISRO's server) and `/geocode` 20 (Nominatim). Past a limit
+Eight routes are limited per visitor address over the last minute, since
+each costs something upstream: `/conversations/{id}/chat` 6 (the model),
+`/query/search`, `/conversations/{id}/query` and `/scenes/rerun` 30 together
+(the STAC API), `/scenes/counts` and `/scenes/page` 120 together (the STAC
+API, for the Scenes tab), `/quicklook` 60 (ISRO's server) and `/geocode` 20
+(Nominatim). Past a limit
 they answer 429 with `Retry-After` and `{"detail": "Too many requests, try
 again in N s"}`, which the web app shows as is. Counts live in the API
 process's memory (`limits.py`). The address counted is the header
