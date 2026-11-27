@@ -86,6 +86,12 @@ type ChatState = {
   // removes it; "run" (Shift+click) chooses every scene from the last one
   // clicked to this one, in the order of `order` (the scenes shown).
   chooseScene: (id: string, how: "only" | "toggle" | "run", order: string[]) => void
+  // Opens one scene from the map (a footprint click, or a step with ‹ ›):
+  // chooses only it, as a plain click does, and leaves the camera still.
+  openOnMap: (id: string) => void
+  // Whether the camera frames the open scene when its card appears under the
+  // shrunk palette: true after a strip click, false after openOnMap.
+  cameraFollows: boolean
   // Closes the open card and un-chooses its scene; the others stay chosen.
   closeScene: () => void
   clearChosen: () => void
@@ -474,6 +480,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     error: null,
     ...emptyResults,
     zoomRequest: 0,
+    cameraFollows: true,
 
     setTimeRange: (range) => set({ timeRange: range }),
     setSatelliteFilter: (sats) => set({ satelliteFilter: sats.length ? sats : ALL_SATELLITES }),
@@ -482,15 +489,19 @@ export const useChatStore = create<ChatState>((set, get) => {
         if (how === "run" && anchorId && order.includes(anchorId) && order.includes(id)) {
           const from = Math.min(order.indexOf(anchorId), order.indexOf(id))
           const to = Math.max(order.indexOf(anchorId), order.indexOf(id))
-          return { chosenIds: order.slice(from, to + 1), selectedSceneId: id }
+          return { chosenIds: order.slice(from, to + 1), selectedSceneId: id, cameraFollows: true }
         }
         anchorId = id
         if (how === "toggle" && s.chosenIds.includes(id)) {
           const chosenIds = s.chosenIds.filter((c) => c !== id)
           return { chosenIds, selectedSceneId: s.selectedSceneId === id ? null : s.selectedSceneId }
         }
-        return { chosenIds: how === "toggle" ? [...s.chosenIds, id] : [id], selectedSceneId: id }
+        return { chosenIds: how === "toggle" ? [...s.chosenIds, id] : [id], selectedSceneId: id, cameraFollows: true }
       }),
+    openOnMap: (id) => {
+      anchorId = id
+      set({ chosenIds: [id], selectedSceneId: id, cameraFollows: false })
+    },
     closeScene: () =>
       set((s) => ({
         selectedSceneId: null,

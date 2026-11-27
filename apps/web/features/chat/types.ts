@@ -38,6 +38,10 @@ export interface Scene {
   center?: { lat: number; lon: number } | null
   // Public quicklook JPEG on the ISRO portal, or null.
   quicklook_url?: string | null
+  // The scene's place on its sensor's fixed grid ("LIS3 96/51", "MSI
+  // T43RGM"): scenes in the same cell cover the same ground. Null for
+  // sensors without a fixed grid, absent on scenes saved before it existed.
+  grid_cell?: string | null
 }
 
 export interface SearchResult {

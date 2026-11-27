@@ -14,6 +14,15 @@
   products are chosen, when Clear filters is pressed, when the date window
   is let go, and when the chosen scenes are removed, once the panels have
   stopped moving.
+- A click on a footprint on the map opens its scene, with its card and its
+  quicklook, and the map stays where it is. The other footprints stay as
+  faint outlines, so a click on one of them opens that scene instead, and a
+  click inside the open scene closes it. Where footprints stack, the click
+  opens the newest scene of the product with the smallest footprints.
+- Arrows on the edges of the scene card, and the comma and full stop keys,
+  step to the older or newer scene on the same footprint (the same path and
+  row, or the same Sentinel-2 tile) among the scenes the map shows. The card
+  slides to the next scene, and its quicklook fades in over the last one.
 
 ### Changed
 

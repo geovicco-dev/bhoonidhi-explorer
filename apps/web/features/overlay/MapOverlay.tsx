@@ -5,6 +5,7 @@ import { useMap } from "@/features/map/MapProvider"
 import { AoiOverlay } from "@/features/aoi/AoiOverlay"
 import { DrawButton } from "@/features/aoi/DrawButton"
 import { useQuicklookKey } from "@/features/map/QuicklookControl"
+import { useCellStepKeys } from "@/features/scene/cellSteps"
 import { AvailabilityLegend } from "@/features/scene/AvailabilityLegend"
 import { CommandPalette } from "@/features/palette/CommandPalette"
 import { SelectedSceneCard } from "@/features/scene/SelectedSceneCard"
@@ -19,6 +20,7 @@ export function MapOverlay() {
     const { map } = useMap()
     useQueryShortcut()
     useQuicklookKey()
+    useCellStepKeys()
 
     return (
         <div className="pointer-events-none absolute inset-0 z-10">

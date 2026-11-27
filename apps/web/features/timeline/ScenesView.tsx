@@ -6,7 +6,8 @@ import { IconCheck, IconChevronDown, IconChevronRight, IconCopy, IconDownload, I
 import { useTheme } from "next-themes"
 import { isPaged, useChatStore, visibleScenes } from "@/features/chat/store"
 import type { Scene } from "@/features/chat/types"
-import { SceneDetailCard } from "@/features/scene/SceneDetailCard"
+import { EDGE_ARROW_OVERHANG, SceneDetailCard } from "@/features/scene/SceneDetailCard"
+import { useCellSteps } from "@/features/scene/cellSteps"
 import { isReady, portalSummary } from "@/features/scene/availability"
 import { scenesHandoff, type Handoff } from "@/features/scene/handoff"
 import { copyText } from "@/lib/clipboard"
@@ -22,6 +23,7 @@ import {
   loadMoreStrip,
   useChosenScenes,
   useResultCount,
+  useScene,
   useSceneSource,
   useWhole,
   windowTally,
@@ -113,6 +115,8 @@ export function ScenesView() {
   const closeScene = useChatStore((s) => s.closeScene)
   const clearChosen = useChatStore((s) => s.clearChosen)
   const requestZoom = useChatStore((s) => s.requestZoom)
+  const openOnMap = useChatStore((s) => s.openOnMap)
+  const steps = useCellSteps(useScene(selectedSceneId))
 
   // A result that holds only its newest scenes reads its counts from the
   // STAC API and its scenes from pages (whole.ts); any other, from its own
@@ -409,12 +413,16 @@ export function ScenesView() {
                       aria-selected={isChosen}
                       data-scene-id={s.id}
                       className="shrink-0"
+                      // Room for the arrows on the open card's edges.
+                      style={selected && steps ? { paddingInline: EDGE_ARROW_OVERHANG } : undefined}
                     >
                       {selected ? (
                         <SceneDetailCard
                           scene={s}
                           onClose={closeScene}
                           onZoom={requestZoom}
+                          steps={steps}
+                          onStep={openOnMap}
                         />
                       ) : (
                         <LazyThumbnail root={stripRef}>
