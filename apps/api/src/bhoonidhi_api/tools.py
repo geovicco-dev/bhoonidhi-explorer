@@ -118,6 +118,7 @@ _FIELDS = {
         "properties.datetime", "properties.DOP", "properties.SATELLITE", "properties.SENSOR",
         "properties.SELECTION", "properties.gsd",
         "properties.bhoonidhi:availability", "properties.bhoonidhi:downloadable",
+        "properties.PATHNO", "properties.SCENE_NO", "properties.TILE_ID",
     ],
     "exclude": ["links"],
 }
@@ -423,6 +424,43 @@ def unique_items(features: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(unique.values())
 
 
+_SENTINEL_TILE = re.compile(r"^T\d{2}[A-Z]{3}$")
+# LISS-4 and AWiFS cut one path and row into parts, named by a letter: LISS-4
+# into sub-scenes, AWiFS into quadrants A to D or the full scene F.
+_SENSORS_WITH_PARTS = ("LIS4", "AWIF")
+# AWiFS IDs that spell out the date carry the part after the path and row
+# ("R2A_AWIF_-_30-OCT-2026_96_51_C_..."); the other IDs end with it.
+_SPELLED_DATE_ID = re.compile(r"^[A-Z0-9]+_[A-Z0-9]+_-_\d{2}-[A-Z]{3}-\d{4}_\d+_\d+_([A-Z])_")
+
+
+def _grid_number(value: Any) -> int | None:
+    try:
+        n = int(str(value).strip())
+    except ValueError:
+        return None
+    # The portal writes -999 where a sensor has no path or row.
+    return n if n >= 0 else None
+
+
+def _grid_cell(scene_id: str, p: dict[str, Any]) -> str | None:
+    """The scene's place on its sensor's fixed grid, e.g. "LIS3 96/51",
+    "LIS4 96/51 C" or "MSI T43RGM". Scenes of one sensor in the same cell
+    cover the same ground, whichever satellite took them. None for sensors
+    without a fixed grid (VIIRS, AVHRR, Sentinel-1, EOS-04, Cartosat)."""
+    sensor = p.get("SENSOR") or ""
+    tile = str(p.get("TILE_ID") or "")
+    if _SENTINEL_TILE.match(tile):
+        return f"{sensor} {tile}"
+    path, row = _grid_number(p.get("PATHNO")), _grid_number(p.get("SCENE_NO"))
+    if path is None or row is None:
+        return None
+    if sensor not in _SENSORS_WITH_PARTS:
+        return f"{sensor} {path}/{row}"
+    spelled = _SPELLED_DATE_ID.match(scene_id)
+    part = spelled.group(1) if spelled else scene_id[-1:]
+    return f"{sensor} {path}/{row} {part}"
+
+
 def _item_to_scene(item: dict[str, Any]) -> dict[str, Any]:
     p = item.get("properties") or {}
     thumb = (item.get("assets") or {}).get("thumbnail") or {}
@@ -440,6 +478,7 @@ def _item_to_scene(item: dict[str, Any]) -> dict[str, Any]:
         "footprint": geom if (geom or {}).get("type") == "Polygon" else None,
         # Portal-hosted; fetched through the /quicklook proxy.
         "quicklook_url": thumb.get("href"),
+        "grid_cell": _grid_cell(str(item.get("id") or ""), p),
     }
 
 
